@@ -175,12 +175,13 @@ Tablas de Drift:
 
 ## Notas del entorno (actualizar si cambia)
 
-- Flutter 3.47.6 stable, Dart 3.13.5. Android SDK en
-  `C:\Users\USER\AppData\Local\Android\sdk`, NDK 28.2.13676358 instalado a mano.
+- Flutter 3.47.6 stable, Dart 3.13.5. `applicationId`: `com.diloia.app`.
 - La instalación automática del NDK falla porque el nuevo `android` CLI no entiende el id
-  `ndk;<version>` que le pasa Gradle. Se instala con:
-  `…\cmdline-tools\latest\bin\android.exe sdk install "ndk/28.2.13676358"`.
-- Requiere **Instalar vía USB** y **Depuración USB (Ajustes de seguridad)** activados en Opciones
-  de desarrollador, o `adb install` falla con `INSTALL_FAILED_USER_RESTRICTED`.
+  `ndk;<version>` que le pasa Gradle. Se instala a mano con:
+  `%LOCALAPPDATA%\Android\sdk\cmdline-tools\latest\bin\android.exe sdk install "ndk/28.2.13676358"`.
+- En celulares Xiaomi/Redmi hay que activar **Instalar vía USB** y **Depuración USB
+  (Ajustes de seguridad)** en Opciones de desarrollador, o `adb install` falla con
+  `INSTALL_FAILED_USER_RESTRICTED`.
+- Sin atribución de IA en commits ni PRs (nada de `Co-Authored-By: Claude`).
 - Los avisos `WARNING: A restricted method in java.lang.System…` de Gradle son ruido de
   Java 25 y no afectan el build.

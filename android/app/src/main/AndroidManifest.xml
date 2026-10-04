@@ -1,6 +1,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Internet: necesario para llamar a la Edge Function `extraer-tarea`.
+         Va aquí, en el manifiesto principal, y no solo en el de debug: si no, el APK
+         release se compila bien pero no tiene acceso a la red. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Micrófono: para grabar el dictado de la tarea. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
+    <!-- Notificaciones: desde Android 13 (API 33) además hay que pedirlo
+         en tiempo de ejecución, no basta declararlo aquí. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Alarmas exactas: los recordatorios deben sonar a una hora precisa.
+         En Android 12 (API 31/32) se pide SCHEDULE_EXACT_ALARM; desde Android 13
+         USE_EXACT_ALARM se concede automáticamente a apps de calendario/alarma. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+
+    <!-- Reprogramar los recordatorios después de reiniciar el celular. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <!-- Vibración al notificar. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <application
-        android:label="diloia_app"
+        android:label="DiloIA"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

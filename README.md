@@ -12,8 +12,6 @@ Solo Android. Funciona sin internet (excepto el dictado por voz).
 
 - Flutter estable (probado con 3.47.6) y Android SDK.
 - Un celular Android con **Depuración USB** activada, o un emulador.
-  - En Xiaomi/Redmi activar también **Instalar vía USB** y **Depuración USB
-    (Ajustes de seguridad)** en Opciones de desarrollador.
 - Comprobar el entorno: `flutter doctor` (los avisos de Chrome y Visual Studio se pueden
   ignorar: solo compilamos para Android).
 
@@ -21,11 +19,28 @@ Solo Android. Funciona sin internet (excepto el dictado por voz).
 
 ```bash
 git clone <URL-del-repo>
-cd diloia_app
+cd <nombre-del-repo>
 flutter pub get
-dart run build_runner build   # genera el código de Drift (cuando exista la base de datos)
 flutter run
 ```
+
+| Comando | Qué hace |
+|---|---|
+| `git clone` | Descarga el proyecto desde GitHub a una carpeta nueva. |
+| `cd` | Entra a esa carpeta (se llama igual que el repo). |
+| `flutter pub get` | Descarga las dependencias de `pubspec.yaml`. |
+| `flutter run` | Compila e instala la app en el celular conectado. La primera vez tarda varios minutos. |
+
+Al abrir la carpeta en VS Code, acepta instalar las extensiones recomendadas (Dart y
+Flutter).
+
+### Cuándo volver a correr algo
+
+| Situación | Comando |
+|---|---|
+| Alguien cambió las dependencias en `pubspec.yaml` | `flutter pub get` |
+| Alguien cambió las tablas de la base de datos (desde la fase 2) | `dart run build_runner build` |
+| Ver tus cambios mientras `flutter run` está abierto | tecla `r` (hot reload) |
 
 ### Si falla por el NDK (`Package ndk not found`)
 
@@ -48,9 +63,26 @@ El nuevo `android` CLI no entiende el id que le pasa Gradle. Instalarlo a mano
 
 ```
 lib/
-  core/        tema y constantes
-  data/        base de datos local (Drift) y repositorios
-  features/    voice, tasks, calendar, dashboard, reminders
-  services/    cliente de la Edge Function, notificaciones, conectividad
-supabase/functions/extraer-tarea/   función que llama a Gemini
+  main.dart            arranque de la app
+  core/                tema, colores, constantes (tipos de actividad, duraciones, zona horaria)
+  data/                base de datos local (Drift) y repositorios
+  features/
+    voice/             botón de voz y tarjeta de confirmación
+    tasks/             lista de pendientes y formulario manual
+    calendar/          calendario mensual
+    dashboard/         panel de carga académica semanal
+    reminders/         pantalla y ajustes de recordatorios
+  services/            cliente de la Edge Function, notificaciones, conectividad
+android/               proyecto Android (permisos y configuración de Gradle)
+test/                  pruebas unitarias y de widgets
+supabase/
+  functions/
+    extraer-tarea/     Edge Function (Deno) que llama a Gemini
 ```
+
+Las carpetas vacías llevan un archivo `.gitkeep`: Git no versiona carpetas vacías, y ese
+archivo solo existe para que la estructura viaje en el repo. Se puede borrar en cuanto la
+carpeta tenga código de verdad.
+
+Solo existe la carpeta `android/`: el alcance del proyecto es únicamente Android, así que
+`ios/`, `web/`, `linux/`, `macos/` y `windows/` se eliminaron a propósito.
