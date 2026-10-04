@@ -53,9 +53,25 @@ El nuevo `android` CLI no entiende el id que le pasa Gradle. Instalarlo a mano
 
 ## Cómo trabajamos (Git)
 
-- **Nunca** hacer push directo a `main`.
-- Una rama por tarea: `feature/nombre-corto`. Al terminar, abrir un Pull Request.
-- Antes de cada commit: `flutter analyze` y `flutter test`. `main` siempre debe compilar.
+### Flujo de cada tarea
+
+1. Antes de empezar, actualizar `main`: `git switch main` y `git pull`.
+2. Crear la rama de la tarea: `git switch -c feature/nombre-corto`.
+3. Trabajar y hacer commits en esa rama.
+4. Si `main` avanzó mientras trabajabas, traerlo a tu rama: `git merge main` (los conflictos
+   se resuelven en tu rama, nunca en `main`).
+5. Antes de subir: `flutter analyze` y `flutter test`. `main` siempre debe compilar.
+6. Subir la rama: `git push -u origin feature/nombre-corto`.
+7. **Avisar al responsable del repo.** Quien subió la rama no abre el Pull Request: el
+   responsable lo abre, revisa y lo fusiona a `main` (con *Squash*).
+8. Cuando se fusione, todos: `git switch main`, `git pull` y borrar la rama local vieja.
+
+### Reglas
+
+- **Nunca** hacer push directo a `main`: GitHub lo bloquea, todo entra por Pull Request.
+- Ramas pequeñas, un tema por rama. Si dos personas tocan el mismo archivo se generan
+  conflictos; los archivos compartidos (`pubspec.yaml`, `lib/app.dart`,
+  `AndroidManifest.xml`) conviene cambiarlos en ramas cortas.
 - **Jamás** subir la API key de Gemini ni archivos `.env`. La key vive solo como secreto en
   Supabase.
 

@@ -145,8 +145,12 @@ Tablas de Drift:
 
 ## Reglas de trabajo en equipo (Git)
 
-- **Nunca push directo a `main`.** Una rama por tarea (`feature/nombre-corto`), dejarla
-  lista para abrir un Pull Request.
+- **Nunca push directo a `main`** (GitHub lo bloquea). Antes de empezar: `git switch main`
+  y `git pull`. Una rama por tarea (`feature/nombre-corto`) y subirla a su rama remota.
+- **Quien abre, revisa y fusiona todos los Pull Request es el dueño del repo** (con
+  *Squash*). Ni los compañeros ni Claude abren PR: se deja la rama subida y se avisa.
+- Las fases se trabajan en orden. Si otra persona apoya con una fase, el dueño del repo lo
+  indica; mientras tanto se sigue con la siguiente fase pendiente.
 - Antes de cada commit: `flutter analyze` y los tests. **`main` siempre debe compilar.**
 - **No ejecutar comandos destructivos** (`reset --hard`, `push --force`, borrar ramas) sin
   pedir confirmación.
