@@ -196,6 +196,15 @@ Notas de implementación (fase 2):
 9. **APK release** (`flutter build apk --release`) y pruebas de usabilidad con estudiantes
    usando el cuestionario SUS.
 
+### Pendientes anotados (no olvidar)
+
+- **Fase 6 — zona horaria.** `Tasks.inicio` se guarda como la hora local del teléfono, sin
+  zona. Al programar recordatorios, convertir explícitamente a `America/Lima` con
+  `timezone`/`flutter_timezone` (no asumir que el teléfono está en hora de Lima). Revisar
+  también que "Vencida", el filtro "Pasadas" y `BorradorTarea.yaPaso` usen ese mismo "ahora".
+- **Fase 6 — deshacer borrado.** `TasksRepository.restaurar` reinserta la tarea: también
+  debe reprogramar sus recordatorios (y `borrar`/`marcarCompletada` cancelarlos).
+
 ## Notas del entorno (actualizar si cambia)
 
 - Flutter 3.47.6 stable, Dart 3.13.5. `applicationId`: `com.diloia.app`.
