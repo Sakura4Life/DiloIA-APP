@@ -80,11 +80,13 @@ El nuevo `android` CLI no entiende el id que le pasa Gradle. Instalarlo a mano
 ```
 lib/
   main.dart            arranque de la app
+  app.dart             tema, idioma y navegación principal (pestañas)
   core/                tema, colores, constantes (tipos de actividad, duraciones, zona horaria)
-  data/                base de datos local (Drift) y repositorios
+  data/                base de datos local (Drift), repositorios y providers
   features/
     voice/             botón de voz y tarjeta de confirmación
-    tasks/             lista de pendientes y formulario manual
+    tasks/             lista de pendientes y formulario de tarea
+    courses/           crear, editar y borrar cursos
     calendar/          calendario mensual
     dashboard/         panel de carga académica semanal
     reminders/         pantalla y ajustes de recordatorios
