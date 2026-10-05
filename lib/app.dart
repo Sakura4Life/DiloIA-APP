@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/theme.dart';
 import 'features/calendar/calendar_screen.dart';
+import 'features/courses/courses_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/tasks/task_form_screen.dart';
 import 'features/tasks/tasks_screen.dart';
 import 'features/voice/voice_button.dart';
 
@@ -22,7 +25,39 @@ class DiloIAApp extends StatelessWidget {
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      builder: (context, child) => _BarraDelSistema(child: child!),
       home: const HomeShell(),
+    );
+  }
+}
+
+/// Ajusta la barra de navegación del teléfono (los botones de atrás, inicio y
+/// recientes) al modo claro u oscuro de la app.
+///
+/// La barra se deja transparente para que detrás se vea la propia app, y sus
+/// íconos se pintan oscuros en modo claro y claros en modo oscuro. Sin esto,
+/// Android puede poner un fondo claro en modo oscuro, o dejar los íconos
+/// del mismo color que el fondo en modo claro.
+class _BarraDelSistema extends StatelessWidget {
+  const _BarraDelSistema({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarIconBrightness: oscuro
+            ? Brightness.light
+            : Brightness.dark,
+        // Quita el velo semitransparente que Android agrega encima de los
+        // botones, que era el que se veía claro en modo oscuro.
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: child,
     );
   }
 }
@@ -41,10 +76,28 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _titulos = ['Pendientes', 'Calendario', 'Panel'];
 
+  void _abrir(Widget pantalla) {
+    Navigator.push(context, MaterialPageRoute<void>(builder: (_) => pantalla));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_titulos[_indice])),
+      appBar: AppBar(
+        title: Text(_titulos[_indice]),
+        actions: [
+          IconButton(
+            tooltip: 'Cursos',
+            icon: const Icon(Icons.school_outlined),
+            onPressed: () => _abrir(const CoursesScreen()),
+          ),
+          IconButton(
+            tooltip: 'Nueva tarea',
+            icon: const Icon(Icons.add),
+            onPressed: () => _abrir(const TaskFormScreen()),
+          ),
+        ],
+      ),
       // IndexedStack mantiene vivas las tres pantallas: al volver a una
       // pestaña conserva su estado (por ejemplo, la posición del scroll).
       body: IndexedStack(

@@ -64,11 +64,13 @@ estos paquetes cambian entre versiones.
 
 ```json
 { "transcripcion": "...", "materia": "Física", "tipo": "entrega",
-  "fecha": "2026-10-06", "hora": "16:00", "peso": 20 }
+  "titulo": "Laboratorio 3", "fecha": "2026-10-06", "hora": "16:00", "peso": 20 }
 ```
 
 - `tipo` es uno de: `entrega`, `examen`, `proyecto`, `exposicion`, `otro`.
 - `fecha` en `YYYY-MM-DD`, `hora` en `HH:mm` de 24 horas, `peso` es un número (porcentaje).
+- `titulo` es un nombre corto opcional de la actividad (máx. 80 caracteres), para
+  distinguir tareas del mismo curso y tipo. Agregado en la fase 2.
 - Todo dato no mencionado llega como `null`. `transcripcion` y `tipo` siempre vienen.
 - La app **envía** a la función: audio en base64 (WAV, 16 kHz, mono), `mimeType`, la fecha
   de hoy con zona horaria de Lima, y la lista de nombres de cursos del estudiante (la IA
@@ -125,11 +127,13 @@ errores 429 de Gemini, y mensajes de error claros para el usuario.
 ```
 lib/
   main.dart
-  core/            tema, constantes, configuración
-  data/            base de datos Drift y repositorios
+  app.dart         MaterialApp y navegación por pestañas (HomeShell)
+  core/            tema, constantes, formato de fechas/peso, paleta de cursos
+  data/            base de datos Drift, repositorios y providers de Riverpod
   features/
     voice/         grabación y tarjeta de confirmación
-    tasks/         lista de pendientes y formulario manual
+    tasks/         lista de pendientes y formulario de tarea (BorradorTarea)
+    courses/       CRUD de cursos
     calendar/
     dashboard/
     reminders/
@@ -141,7 +145,22 @@ test/
 Tablas de Drift:
 
 - `Courses`: id, nombre, color
-- `Tasks`: id, courseId, tipo, inicio, duración en minutos, pesoPorcentaje, completada
+- `Tasks`: id, courseId, tipo, titulo (opcional), inicio, duración en minutos,
+  pesoPorcentaje, completada
+- `Courses` tiene además `orden` (posición elegida por el usuario al arrastrar).
+- Esquema actual: **versión 3** (2 agregó `titulo`, 3 agregó `orden`). Ver historial en
+  `database.dart`. Cada migración nueva lleva su prueba en `test/data/`.
+
+Notas de implementación (fase 2):
+
+- `tipo` se guarda con `textEnum<TipoActividad>()`: el texto coincide con el JSON de la IA.
+- Borrar un curso borra sus tareas (`onDelete: cascade` + `PRAGMA foreign_keys = ON`).
+- Los archivos `*.g.dart` **se versionan**. Tras cambiar las tablas: subir
+  `schemaVersion`, agregar la migración y correr `dart run build_runner build`.
+- La Fase 4 debe reutilizar `TaskFormScreen(borrador: BorradorTarea(...))` como tarjeta
+  de confirmación: ya valida los campos obligatorios y guarda.
+- Las pruebas usan `AppDatabase(DatabaseConnection(NativeDatabase.memory(),
+  closeStreamsSynchronously: true))` y `databaseProvider.overrideWithValue(db)`.
 
 ## Reglas de trabajo en equipo (Git)
 
@@ -176,6 +195,15 @@ Tablas de Drift:
 8. **Opcionales**: resumen hablado (`flutter_tts`), gráficos (`fl_chart`).
 9. **APK release** (`flutter build apk --release`) y pruebas de usabilidad con estudiantes
    usando el cuestionario SUS.
+
+### Pendientes anotados (no olvidar)
+
+- **Fase 6 — zona horaria.** `Tasks.inicio` se guarda como la hora local del teléfono, sin
+  zona. Al programar recordatorios, convertir explícitamente a `America/Lima` con
+  `timezone`/`flutter_timezone` (no asumir que el teléfono está en hora de Lima). Revisar
+  también que "Vencida", el filtro "Pasadas" y `BorradorTarea.yaPaso` usen ese mismo "ahora".
+- **Fase 6 — deshacer borrado.** `TasksRepository.restaurar` reinserta la tarea: también
+  debe reprogramar sus recordatorios (y `borrar`/`marcarCompletada` cancelarlos).
 
 ## Notas del entorno (actualizar si cambia)
 
