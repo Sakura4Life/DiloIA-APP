@@ -9,6 +9,13 @@
       "source.organizeImports": "explicit"
     }
   },
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  // La Edge Function de Supabase usa Deno, no Node: se activa la extensión de
+  // Deno solo en esa carpeta para que VS Code no marque errores falsos.
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.lint": true,
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
   "search.exclude": {
