@@ -79,6 +79,28 @@ estos paquetes cambian entre versiones.
 - El nombre del modelo de Gemini va en una **constante fácil de cambiar**: hay que
   confirmar en Google AI Studio qué modelo tiene Free Tier.
 
+Implementación (fase 3), en `supabase/functions/extraer-tarea/`:
+
+- `MODELO_GEMINI = "gemini-3.5-flash-lite"` está en `logica.ts`. Confirmado con Free Tier
+  (oct. 2026): 15 RPM, 250K TPM, **500 RPD**. La key sale de una cuenta Gmail personal: las
+  cuentas universitarias tienen AI Studio bloqueado por el administrador. Se usa la API `generateContent` (v1beta) con
+  `responseMimeType: application/json` + `responseJsonSchema` y `temperature: 0`.
+- La app envía `hoy` como `YYYY-MM-DD` (fecha de Lima). La función arma en el prompt un
+  calendario de 15 días ya calculado para que el modelo no tenga que hacer cuentas.
+- `normalizarResultado` revisa todo lo que devuelve Gemini: tipo inválido → `otro`,
+  fecha/hora/peso mal formados → `null`, y la materia se reemplaza por el nombre exacto
+  del curso si coincide ignorando tildes y mayúsculas.
+- Errores: `{ "error": "<mensaje para el usuario>", "codigo": "..." }` con códigos
+  `entrada_invalida` (400), `ia_ocupada` (429), `ia_no_disponible` (502),
+  `respuesta_invalida` (502) y `configuracion` (500). La app (fase 4) muestra `error`.
+- Reintenta 2 veces (espera 1 s y 2 s) ante 429, 5xx (el 503 de "servidores saturados" es
+  frecuente en el nivel gratuito) y ante fallos de conexión o si Gemini tarda más de 15 s
+  por intento. Peor caso ≈ 50 s: la app (fase 4) debe esperar al menos 60 s.
+- `verify_jwt = false` en `config.toml`: la app llama con la clave *publishable*, que no
+  es un JWT. La función es pública; por eso **no se activa facturación** en AI Studio.
+- Pruebas: `npx deno test supabase/functions/extraer-tarea` (sin red). Prueba real:
+  `supabase/probar_extraer_tarea.ps1`.
+
 ## Reglas de negocio
 
 **Tarjeta de confirmación editable.** El usuario puede corregir curso, tipo, fecha, hora y
@@ -197,6 +219,9 @@ Notas de implementación (fase 2):
    usando el cuestionario SUS.
 
 ### Pendientes anotados (no olvidar)
+
+- **Antes de cada presentación — Supabase pausado.** El plan gratuito pausa el proyecto
+  tras 7 días sin uso; reactivarlo desde el panel y probar un dictado antes de presentar.
 
 - **Fase 6 — zona horaria.** `Tasks.inicio` se guarda como la hora local del teléfono, sin
   zona. Al programar recordatorios, convertir explícitamente a `America/Lima` con

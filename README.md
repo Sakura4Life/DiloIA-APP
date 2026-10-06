@@ -64,7 +64,8 @@ flutter analyze   # revisa errores y estilo
 flutter test      # corre todas las pruebas de test/
 ```
 
-Ambos deben pasar sin errores antes de subir una rama.
+Ambos deben pasar sin errores antes de subir una rama. Si cambiaste la Edge Function,
+corre también sus pruebas (ver [Edge Function](#edge-function-extraer-tarea)).
 
 ### Si falla por el NDK (`Package ndk not found`)
 
@@ -123,6 +124,68 @@ una tabla sin migración, **la app se cierra al abrirse** en esos teléfonos. Si
 Desinstala la app del celular (o `adb uninstall com.diloia.app`) y vuelve a correr
 `flutter run`. Se borran todos los cursos y tareas de ese teléfono.
 
+## Edge Function `extraer-tarea`
+
+Es la única parte que usa internet. Recibe la frase dictada (texto o audio), se la pasa a
+Gemini y devuelve curso, tipo, título, fecha, hora y peso. Vive en
+`supabase/functions/extraer-tarea/` y está escrita en TypeScript para **Deno** (no es
+Dart ni se compila con la app).
+
+| Archivo | Qué hace |
+|---|---|
+| `index.ts` | Recibe la petición HTTP y devuelve la respuesta o el error. |
+| `logica.ts` | Valida la petición, arma las instrucciones para Gemini y limpia su respuesta. Aquí está `MODELO_GEMINI`. |
+| `gemini.ts` | Llama a Gemini y reintenta si está ocupado (429), saturado (5xx) o no responde a tiempo. |
+| `*_test.ts` | Pruebas. No usan internet ni gastan cuota. |
+
+La API key de Gemini **no está en el repo**: es un secreto (`GEMINI_API_KEY`) guardado en
+Supabase. Para probar y desplegar no hace falta instalar Deno ni el CLI de Supabase: se
+usan con `npx` (viene con Node.js).
+
+**Si VS Code marca errores falsos en los `.ts`** ("Cannot find name 'Deno'", "Cannot find
+module 'jsr:...'"): no son errores reales, es que el editor los revisa como TypeScript
+normal. Para que desaparezcan:
+
+1. Abre en VS Code la carpeta `diloia_app` (no la carpeta de arriba), para que lea
+   `.vscode/settings.json`.
+2. Instala la extensión **Deno** (VS Code la sugiere al abrir el proyecto).
+3. Instala Deno en Windows: `winget install DenoLand.Deno` y reinicia VS Code.
+
+### Probar la lógica (sin internet)
+
+```bash
+npx deno test supabase/functions/extraer-tarea
+```
+
+### Desplegar (solo el responsable del proyecto de Supabase)
+
+1. Guarda la key de Gemini como secreto **desde el panel de Supabase**: *Edge Functions →
+   Secrets → Add new secret*, nombre `GEMINI_API_KEY`. Solo la primera vez o al cambiarla.
+   (Se puede con `npx supabase secrets set`, pero la key quedaría en el historial de la
+   terminal.)
+2. Despliega:
+
+```bash
+npx supabase login                                  # abre el navegador
+npx supabase link --project-ref <id-del-proyecto>
+npx supabase functions deploy extraer-tarea
+```
+
+### Probar la función desplegada
+
+```powershell
+.\supabase\probar_extraer_tarea.ps1 -Proyecto <id-del-proyecto> -Clave <publishable-key>
+```
+
+Manda 10 frases de ejemplo y muestra lo que entendió la IA junto a lo esperado.
+
+### A tener en cuenta
+
+- **No actives facturación** en el proyecto de Google AI Studio. Así, si alguien abusa de
+  la función, solo se agota la cuota gratuita del día; nunca hay cobros.
+- **Supabase gratuito pausa el proyecto tras 7 días sin uso.** Antes de una demo, entra
+  al panel de Supabase y reactívalo si está pausado.
+
 ## Estructura
 
 ```
@@ -142,6 +205,8 @@ lib/
 android/               proyecto Android (permisos y configuración de Gradle)
 test/                  pruebas (core/, data/ y features/ siguen la estructura de lib/)
 supabase/
+  config.toml          configuración del proyecto de Supabase
+  probar_extraer_tarea.ps1   prueba la función desplegada con frases de ejemplo
   functions/
     extraer-tarea/     Edge Function (Deno) que llama a Gemini
 ```
