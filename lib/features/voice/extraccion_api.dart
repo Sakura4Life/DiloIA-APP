@@ -89,14 +89,14 @@ class ExtraccionApi {
   ExtraccionApi({
     http.Client? cliente,
     Uri? url,
-    this.tiempoMaximo = const Duration(seconds: 60),
+    this.tiempoMaximo = const Duration(seconds: 40),
   }) : _cliente = cliente ?? http.Client(),
        _url = url ?? urlExtraerTarea;
 
   final http.Client _cliente;
   final Uri _url;
 
-  /// La función reintenta con Gemini hasta 3 veces (peor caso ≈ 50 s), así
+  /// La función reintenta con Gemini hasta 3 veces (peor caso ≈ 27 s), así
   /// que se espera un poco más que eso antes de rendirse.
   final Duration tiempoMaximo;
 

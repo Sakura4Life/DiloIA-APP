@@ -94,8 +94,9 @@ Implementación (fase 3), en `supabase/functions/extraer-tarea/`:
   `entrada_invalida` (400), `ia_ocupada` (429), `ia_no_disponible` (502),
   `respuesta_invalida` (502) y `configuracion` (500). La app (fase 4) muestra `error`.
 - Reintenta 2 veces (espera 1 s y 2 s) ante 429, 5xx (el 503 de "servidores saturados" es
-  frecuente en el nivel gratuito) y ante fallos de conexión o si Gemini tarda más de 15 s
-  por intento. Peor caso ≈ 50 s: la app (fase 4) debe esperar al menos 60 s.
+  frecuente en el nivel gratuito) y ante fallos de conexión o si Gemini tarda más de 8 s
+  por intento (antes 15 s; se bajó en la fase 4 porque un intento trabado hacía esperar
+  demasiado). Peor caso ≈ 27 s: la app espera hasta 40 s.
 - `verify_jwt = false` en `config.toml`: la app llama con la clave *publishable*, que no
   es un JWT. La función es pública; por eso **no se activa facturación** en AI Studio.
 - Pruebas: `npx deno test supabase/functions/extraer-tarea` (sin red). Prueba real:
