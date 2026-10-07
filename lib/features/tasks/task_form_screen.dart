@@ -11,17 +11,40 @@ import '../courses/course_dialog.dart';
 import 'selector_hora.dart';
 import 'task_draft.dart';
 
-/// Formulario para crear o editar una tarea.
+/// Datos extra cuando la tarjeta viene de un dictado por voz.
+class DesdeDictado {
+  const DesdeDictado({required this.id, this.transcripcion, this.materiaNueva});
+
+  /// Id del dictado en la cola. Al guardar la tarea, el dictado se borra.
+  final int id;
+
+  /// Lo que escuchó la IA. Es `null` si la IA no lo entendió y el usuario
+  /// eligió llenarlo a mano.
+  final String? transcripcion;
+
+  /// Curso dictado que no existe, para ofrecer crearlo.
+  final String? materiaNueva;
+}
+
+/// Formulario para crear o editar una tarea. Al guardar, cierra la pantalla
+/// devolviendo `true`.
 ///
 /// - Sin parámetros: tarea nueva, todo vacío.
 /// - Con [existente]: edita esa tarea.
-/// - Con [borrador]: tarea nueva con datos ya llenados (lo usará la fase 4
-///   para mostrar lo que entendió la IA).
+/// - Con [borrador]: tarea nueva con datos ya llenados.
+/// - Con [dictado] (y [borrador]): es la tarjeta de confirmación de un
+///   dictado por voz, con lo que entendió la IA.
 class TaskFormScreen extends ConsumerStatefulWidget {
-  const TaskFormScreen({super.key, this.existente, this.borrador});
+  const TaskFormScreen({
+    super.key,
+    this.existente,
+    this.borrador,
+    this.dictado,
+  });
 
   final Task? existente;
   final BorradorTarea? borrador;
+  final DesdeDictado? dictado;
 
   @override
   ConsumerState<TaskFormScreen> createState() => _TaskFormScreenState();
@@ -51,6 +74,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   bool _guardando = false;
 
   bool get _editando => widget.existente != null;
+  bool get _desdeDictado => widget.dictado != null;
 
   @override
   void initState() {
@@ -87,8 +111,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     );
   }
 
-  /// Si salir ahora perdería algo. Al crear: si hay cualquier dato. Al editar:
-  /// si algo cambió respecto a la tarea guardada.
+  /// Si salir ahora perdería algo. Al crear: si hay cualquier dato. Al editar
+  /// o revisar un dictado: si algo cambió respecto a lo que había al abrir
+  /// (el dictado no se pierde al salir: queda en "Por revisar").
   bool get _hayCambios {
     const vacio = (
       curso: null,
@@ -99,7 +124,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       peso: '',
     );
     final actual = _contenido();
-    return _editando ? actual != _contenidoInicial : actual != vacio;
+    return _editando || _desdeDictado
+        ? actual != _contenidoInicial
+        : actual != vacio;
   }
 
   /// Se llama al pulsar la flecha de arriba o el botón "atrás" del teléfono
@@ -110,7 +137,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       builder: (context) => AlertDialog(
         title: const Text('¿Descartar los cambios?'),
         content: Text(
-          _editando
+          _desdeDictado
+              ? 'Los cambios que hiciste se perderán. El dictado seguirá en '
+                    '«Por revisar».'
+              : _editando
               ? 'Los cambios que hiciste en esta tarea se perderán.'
               : 'Lo que llenaste en esta tarea se perderá.',
         ),
@@ -184,10 +214,12 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     }
   }
 
-  Future<void> _crearCurso(List<Course> cursos) async {
+  /// [nombre] llena el diálogo de antemano, por ejemplo con el curso dictado.
+  Future<void> _crearCurso(List<Course> cursos, {String nombre = ''}) async {
     final datos = await mostrarDialogoCurso(
       context,
       nombresExistentes: [for (final c in cursos) c.nombre],
+      nombreInicial: nombre,
     );
     if (datos == null) return;
     final id = await ref
@@ -278,7 +310,12 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         ),
       );
     }
-    if (mounted) Navigator.pop(context);
+    // Ya es una tarea: el dictado sale de "Por revisar" y su audio se borra.
+    final dictado = widget.dictado;
+    if (dictado != null) {
+      await ref.read(dictadosRepositoryProvider).borrar(dictado.id);
+    }
+    if (mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -288,6 +325,13 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     final faltan = _mostrarFaltantes ? _borrador.faltantes : const <String>[];
     final fecha = _borrador.fecha;
     final hora = _borrador.hora;
+    final transcripcion = widget.dictado?.transcripcion;
+    final materiaNueva = widget.dictado?.materiaNueva;
+    final titulo = _editando
+        ? 'Editar tarea'
+        : _desdeDictado
+        ? 'Revisar dictado'
+        : 'Nueva tarea';
 
     // PopScope intercepta la flecha de arriba y el botón "atrás" del teléfono:
     // si hay datos sin guardar, pregunta antes de salir.
@@ -297,12 +341,19 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         if (!salio) _confirmarSalida();
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(_editando ? 'Editar tarea' : 'Nueva tarea')),
+        appBar: AppBar(title: Text(titulo)),
         body: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
+              if (transcripcion != null) _LoQueEntendio(transcripcion),
+              // Solo mientras no se haya elegido un curso.
+              if (materiaNueva != null && curso == null)
+                _CursoNoExiste(
+                  nombre: materiaNueva,
+                  onCrear: () => _crearCurso(cursos, nombre: materiaNueva),
+                ),
               _CampoElegible(
                 icono: Icons.school_outlined,
                 etiqueta: 'Curso',
@@ -389,6 +440,85 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Recuadro con lo que escuchó la IA, para comparar con los campos de abajo.
+class _LoQueEntendio extends StatelessWidget {
+  const _LoQueEntendio(this.transcripcion);
+
+  final String transcripcion;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    return Card.filled(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      color: colores.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.mic, color: colores.onPrimaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Entendí: «$transcripcion»',
+                style: TextStyle(
+                  color: colores.onPrimaryContainer,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Aviso de que el curso dictado no existe, con un botón para crearlo.
+class _CursoNoExiste extends StatelessWidget {
+  const _CursoNoExiste({required this.nombre, required this.onCrear});
+
+  final String nombre;
+  final VoidCallback onCrear;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    return Card.outlined(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 8, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: colores.tertiary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'El curso «$nombre» no existe. Créalo o elige otro '
+                    'en «Curso».',
+                  ),
+                ),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onCrear,
+                icon: const Icon(Icons.add),
+                label: const Text('Crear curso'),
+              ),
+            ),
+          ],
         ),
       ),
     );

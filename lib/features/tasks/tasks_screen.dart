@@ -7,6 +7,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../data/tasks_repository.dart';
+import '../voice/por_revisar_screen.dart';
 import 'filtro_tareas.dart';
 import 'task_form_screen.dart';
 
@@ -124,6 +125,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             ],
           ),
         ),
+        // Dictados que esperan internet o confirmación (solo si hay alguno).
+        const AvisoPorRevisar(),
         Expanded(
           child: tareas.when(
             loading: () => const Center(child: CircularProgressIndicator()),

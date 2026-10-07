@@ -103,9 +103,9 @@ El nuevo `android` CLI no entiende el id que le pasa Gradle. Instalarlo a mano
 
 ## Base de datos
 
-Las tareas y cursos se guardan **solo en el celular**, en una base SQLite manejada con
-[Drift](https://drift.simonbinder.eu/). No hay nube ni cuentas: cada teléfono tiene sus
-propios datos.
+Las tareas, los cursos y los dictados pendientes se guardan **solo en el celular**, en
+una base SQLite manejada con [Drift](https://drift.simonbinder.eu/). No hay nube ni
+cuentas: cada teléfono tiene sus propios datos.
 
 ### Si cambias una tabla
 
@@ -122,7 +122,28 @@ una tabla sin migración, **la app se cierra al abrirse** en esos teléfonos. Si
 ### Empezar con la base vacía
 
 Desinstala la app del celular (o `adb uninstall com.diloia.app`) y vuelve a correr
-`flutter run`. Se borran todos los cursos y tareas de ese teléfono.
+`flutter run`. Se borran todos los cursos, tareas y dictados de ese teléfono.
+
+## Dictado por voz
+
+1. Se mantiene presionado el micrófono y se habla (entre 1 y 30 segundos).
+2. El audio se guarda primero en el celular, en la **cola de dictados**. Desde ahí ya no
+   se pierde, aunque no haya internet o la IA falle.
+3. Si hay internet, se envía a la Edge Function y se abre la **tarjeta** con lo que
+   entendió la IA, para revisarla y guardarla. Si no, se procesa solo cuando vuelve la
+   conexión (con la app abierta) y aparece en **«Por revisar»**, arriba de Pendientes.
+
+El cliente de la función está en `lib/features/voice/extraccion_api.dart`; la dirección
+y la clave *publishable* (pública) en `lib/core/supabase_config.dart`.
+
+### Probar en el celular
+
+- **Primera vez**: al mantener presionado el micrófono, Android pide el permiso. Después
+  hay que volver a mantenerlo presionado para dictar.
+- **Sin internet**: pon el modo avión, dicta, quita el modo avión con la app abierta y
+  revisa «Por revisar».
+- Si el permiso se negó dos veces, Android ya no pregunta: se activa en *Ajustes → Apps
+  → DiloIA → Permisos → Micrófono*.
 
 ## Edge Function `extraer-tarea`
 
@@ -195,13 +216,13 @@ lib/
   core/                tema, colores, constantes y formato de fechas, horas y peso
   data/                base de datos local (Drift), repositorios y providers
   features/
-    voice/             botón de voz y tarjeta de confirmación
+    voice/             botón de voz, grabación, llamada a la IA y cola «Por revisar»
     tasks/             lista de pendientes, filtro, formulario y selector de hora
     courses/           crear, editar, ordenar y borrar cursos
     calendar/          calendario mensual
     dashboard/         panel de carga académica semanal
     reminders/         pantalla y ajustes de recordatorios
-  services/            cliente de la Edge Function, notificaciones, conectividad
+  services/            notificaciones (fase 6)
 android/               proyecto Android (permisos y configuración de Gradle)
 test/                  pruebas (core/, data/ y features/ siguen la estructura de lib/)
 supabase/

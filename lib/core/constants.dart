@@ -5,6 +5,26 @@ const zonaHorariaLima = 'America/Lima';
 /// Tiempo máximo de grabación del dictado por voz.
 const duracionMaximaDictado = Duration(seconds: 30);
 
+/// Un dictado más corto que esto se descarta: seguramente fue un toque largo
+/// sin querer, no alguien hablando.
+const duracionMinimaDictado = Duration(seconds: 1);
+
+/// Cuántos dictados pueden esperar a ser revisados a la vez. Cada audio pesa
+/// hasta ~1 MB; el límite evita llenar el celular.
+const maximoDictadosEnEspera = 10;
+
+/// En qué paso va un dictado guardado en la cola.
+enum EstadoDictado {
+  /// Aún no lo procesa la IA: falta internet o la IA estaba ocupada.
+  esperando,
+
+  /// La IA ya lo entendió; falta que el usuario revise la tarjeta.
+  listo,
+
+  /// La IA no pudo entenderlo. El usuario puede reintentar o llenarlo a mano.
+  fallido,
+}
+
 /// Tipos de actividad académica.
 ///
 /// Los nombres del enum coinciden exactamente con el campo `tipo` del JSON que

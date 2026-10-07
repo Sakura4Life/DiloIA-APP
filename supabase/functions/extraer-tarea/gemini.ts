@@ -63,8 +63,12 @@ export function cuerpoGemini(peticion: Peticion) {
   };
 }
 
-/** Tiempo máximo que se espera a Gemini en cada intento. */
-export const TIEMPO_POR_INTENTO_MS = 15_000;
+/**
+ * Tiempo máximo que se espera a Gemini en cada intento. Normalmente responde
+ * en pocos segundos; si tarda más, suele estar trabado y conviene reintentar
+ * antes. Peor caso total: 3 intentos × 8 s + esperas de 1 s y 2 s ≈ 27 s.
+ */
+export const TIEMPO_POR_INTENTO_MS = 8_000;
 
 /**
  * Envía la petición a Gemini y devuelve el JSON que respondió (sin validar:

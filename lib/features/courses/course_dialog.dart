@@ -44,7 +44,9 @@ class _DialogoCursoState extends State<_DialogoCurso> {
   late final _nombre = TextEditingController(text: widget.nombreInicial);
   late int _color = widget.colorInicial ?? coloresDeCurso.first.toARGB32();
 
-  bool get _esNuevo => widget.nombreInicial.isEmpty;
+  /// Al editar siempre llega el color del curso. Un curso nuevo puede traer
+  /// nombre (por ejemplo, el que se dictó) pero no color.
+  bool get _esNuevo => widget.colorInicial == null;
 
   @override
   void dispose() {
@@ -60,7 +62,8 @@ class _DialogoCursoState extends State<_DialogoCurso> {
     final repetido = widget.nombresExistentes.any(
       (otro) =>
           claveDeOrden(otro) == claveDeOrden(nombre) &&
-          claveDeOrden(otro) != claveDeOrden(widget.nombreInicial),
+          (_esNuevo ||
+              claveDeOrden(otro) != claveDeOrden(widget.nombreInicial)),
     );
     if (repetido) return 'Ya tienes un curso con ese nombre';
     return null;

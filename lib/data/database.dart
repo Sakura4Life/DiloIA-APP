@@ -44,7 +44,30 @@ class Tasks extends Table {
   BoolColumn get completada => boolean().withDefault(const Constant(false))();
 }
 
-@DriftDatabase(tables: [Courses, Tasks])
+/// Dictados por voz que todavía no son tareas: esperan internet, esperan que
+/// el usuario revise la tarjeta, o la IA no los entendió. Drift genera la
+/// clase `Dictado` para cada fila. Agregada en la versión 4 del esquema.
+@DataClassName('Dictado')
+class Dictados extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Archivo WAV en la carpeta de la app. Se borra junto con la fila.
+  TextColumn get rutaAudio => text()();
+
+  /// Cuándo se grabó. Se envía a la IA como "hoy", para que "mañana" se
+  /// entienda respecto al día en que se habló y no al día en que se procesa.
+  DateTimeColumn get grabadoEn => dateTime()();
+
+  TextColumn get estado => textEnum<EstadoDictado>()();
+
+  /// Lo que respondió la IA, tal cual (JSON). Solo cuando el estado es `listo`.
+  TextColumn get resultado => text().nullable()();
+
+  /// Mensaje para el usuario si algo salió mal, por ejemplo "Sin conexión".
+  TextColumn get mensaje => text().nullable()();
+}
+
+@DriftDatabase(tables: [Courses, Tasks, Dictados])
 class AppDatabase extends _$AppDatabase {
   /// Recibe la conexión desde fuera: las pruebas le pasan una base en memoria.
   AppDatabase(super.e);
@@ -58,8 +81,9 @@ class AppDatabase extends _$AppDatabase {
   /// - 1: tablas Courses y Tasks.
   /// - 2: columna `titulo` en Tasks.
   /// - 3: columna `orden` en Courses.
+  /// - 4: tabla Dictados (cola de dictados por voz).
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -73,6 +97,7 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(courses, courses.orden);
         await _ordenarCursosAlfabeticamente();
       }
+      if (desde < 4) await m.createTable(dictados);
     },
     beforeOpen: (details) async {
       // SQLite trae las relaciones entre tablas apagadas por defecto. Sin esto,
