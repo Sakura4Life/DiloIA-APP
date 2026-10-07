@@ -47,9 +47,9 @@ semanal leído en voz alta.
 | Área | Paquete |
 |---|---|
 | Estado | `flutter_riverpod` (sin code generation) |
-| Audio y permisos | `record`, `permission_handler` |
+| Audio y permiso de micrófono | `record` (pide el permiso él mismo). `permission_handler` se descartó en la fase 4: su versión actual exige compilar con Android 37 |
 | IA | Gemini API (entiende el audio y devuelve JSON), llamada **solo** desde la Edge Function |
-| Backend | Supabase Edge Function (Deno/TypeScript) + `supabase_flutter` solo para invocarla |
+| Backend | Supabase Edge Function (Deno/TypeScript), llamada con `http` (un POST). Se eligió `http` en vez de `supabase_flutter` en la fase 4: no usamos login ni base en la nube, y `http` es más simple de probar |
 | Base local | `drift`, `drift_flutter`, `path_provider` |
 | Recordatorios | `flutter_local_notifications`, `timezone`, `flutter_timezone` |
 | Red | `connectivity_plus` |
@@ -141,8 +141,9 @@ errores 429 de Gemini, y mensajes de error claros para el usuario.
   seguir el README actual del paquete.
 - Usar siempre la zona horaria **America/Lima** para programar notificaciones y calcular
   «hoy».
-- La URL y la clave `anon` de Supabase **pueden** ir en el código (son públicas). Nunca la
-  key de Gemini ni ningún otro secreto; nada de archivos `.env` en el repo.
+- El id del proyecto y la clave *publishable* de Supabase **pueden** ir en el código (son
+  públicas; están en `lib/core/supabase_config.dart`). Nunca la key de Gemini ni ningún
+  otro secreto; nada de archivos `.env` en el repo.
 
 ## Estructura de carpetas
 
@@ -153,13 +154,13 @@ lib/
   core/            tema, constantes, formato de fechas/peso, paleta de cursos
   data/            base de datos Drift, repositorios y providers de Riverpod
   features/
-    voice/         grabación y tarjeta de confirmación
+    voice/         grabación, cliente de la Edge Function, cola de dictados, "Por revisar"
     tasks/         lista de pendientes y formulario de tarea (BorradorTarea)
     courses/       CRUD de cursos
     calendar/
     dashboard/
     reminders/
-  services/        cliente de la Edge Function, notificaciones, conectividad
+  services/        notificaciones (fase 6)
 supabase/functions/extraer-tarea/
 test/
 ```
@@ -170,8 +171,11 @@ Tablas de Drift:
 - `Tasks`: id, courseId, tipo, titulo (opcional), inicio, duración en minutos,
   pesoPorcentaje, completada
 - `Courses` tiene además `orden` (posición elegida por el usuario al arrastrar).
-- Esquema actual: **versión 3** (2 agregó `titulo`, 3 agregó `orden`). Ver historial en
-  `database.dart`. Cada migración nueva lleva su prueba en `test/data/`.
+- `Dictados` (clase `Dictado`): id, rutaAudio, grabadoEn, estado (`esperando`, `listo`,
+  `fallido`), resultado (JSON de la IA), mensaje. Es la cola de dictados por voz.
+- Esquema actual: **versión 4** (2 agregó `titulo`, 3 agregó `orden`, 4 agregó
+  `Dictados`). Ver historial en `database.dart`. Cada migración nueva lleva su prueba en
+  `test/data/`.
 
 Notas de implementación (fase 2):
 
@@ -179,10 +183,31 @@ Notas de implementación (fase 2):
 - Borrar un curso borra sus tareas (`onDelete: cascade` + `PRAGMA foreign_keys = ON`).
 - Los archivos `*.g.dart` **se versionan**. Tras cambiar las tablas: subir
   `schemaVersion`, agregar la migración y correr `dart run build_runner build`.
-- La Fase 4 debe reutilizar `TaskFormScreen(borrador: BorradorTarea(...))` como tarjeta
-  de confirmación: ya valida los campos obligatorios y guarda.
 - Las pruebas usan `AppDatabase(DatabaseConnection(NativeDatabase.memory(),
   closeStreamsSynchronously: true))` y `databaseProvider.overrideWithValue(db)`.
+
+Notas de implementación (fase 4, voz):
+
+- **Todo dictado pasa por la cola**, haya internet o no: se graba (WAV 16 kHz mono, entre
+  1 y 30 s) en `<documentos de la app>/dictados/`, se guarda en `Dictados` como
+  `esperando` y luego `ProcesadorDictados.procesar` lo envía a la función. Así nunca se
+  pierde un dictado. Máximo `maximoDictadosEnEspera` (10) en la cola.
+- A la función se le envía como `hoy` la **fecha en que se grabó** (`fechaEnLima`), no la
+  del día en que se procesa: "mañana" debe ser relativo al día en que se habló.
+- Errores reintentables (sin red, `ia_ocupada`, `ia_no_disponible`, `configuracion`, 5xx
+  sin formato) → el dictado sigue `esperando`. `respuesta_invalida`, `entrada_invalida` u
+  otro 4xx → `fallido` (el usuario reintenta, llena a mano o descarta).
+- `ColaAutomatica` (envuelve a `HomeShell`) procesa la cola al abrir la app, al volver la
+  red (`connectivity_plus`) y al regresar a la app. **Solo con la app abierta.**
+- La tarjeta es `TaskFormScreen(borrador:, dictado: DesdeDictado(...))`: muestra
+  «Entendí: …» y ofrece crear el curso dictado si no existe (`materiaNueva`). Al guardar
+  borra el dictado y su audio. Salir sin guardar lo deja en «Por revisar».
+- `borradorDesdeIA` (función pura) convierte el JSON en `BorradorTarea`; una fecha que ya
+  pasó se deja vacía.
+- Pruebas: `ExtraccionApi` recibe un `MockClient` de `package:http/testing.dart`;
+  `conectividadProvider` se reemplaza con `ConectividadFalsa` (`test/ayudantes.dart`) y
+  `dictadosRepositoryProvider` con un `DictadosRepository(db, borrarArchivo: ...)` que no
+  toca el disco.
 
 ## Reglas de trabajo en equipo (Git)
 
@@ -210,7 +235,7 @@ Notas de implementación (fase 2):
 3. **Edge Function `extraer-tarea`** con Gemini y salida JSON estructurada; probarla con
    texto antes de usar audio.
 4. **Voz en Flutter**: permisos, grabación manteniendo presionado el botón, llamada a la
-   función, tarjeta editable, modo sin conexión.
+   función, tarjeta editable, modo sin conexión (cola de dictados y «Por revisar»).
 5. **Detección de conflictos** con pruebas unitarias.
 6. **Recordatorios locales.**
 7. **Calendario y panel semanal.**
@@ -229,6 +254,16 @@ Notas de implementación (fase 2):
   también que "Vencida", el filtro "Pasadas" y `BorradorTarea.yaPaso` usen ese mismo "ahora".
 - **Fase 6 — deshacer borrado.** `TasksRepository.restaurar` reinserta la tarea: también
   debe reprogramar sus recordatorios (y `borrar`/`marcarCompletada` cancelarlos).
+- **Fase 6 — cola de dictados con la app cerrada** (acordado en la fase 4). Con
+  `workmanager` y la restricción "con red", llamar a `ProcesadorDictados.procesarPendientes`
+  aunque la app esté cerrada y mostrar una notificación «Tienes N dictados listos para
+  revisar» que abra «Por revisar». Revisar que Drift funcione desde ese proceso en segundo
+  plano. En Xiaomi/HyperOS avisar al usuario que active **Inicio automático** y batería
+  **Sin restricciones** para DiloIA (y documentarlo en el README); aun así puede tardar
+  minutos, y cerrar la app deslizándola desde Recientes cancela la tarea.
+- **Fase 6 — permisos.** `permission_handler` se descartó (exige compileSdk 37): pedir
+  el de notificaciones y el de alarmas exactas con los métodos de
+  `flutter_local_notifications`.
 
 ## Notas del entorno (actualizar si cambia)
 

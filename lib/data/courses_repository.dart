@@ -22,6 +22,15 @@ class CoursesRepository {
         .watch();
   }
 
+  /// Los cursos una sola vez, sin quedarse escuchando cambios.
+  Future<List<Course>> todos() {
+    return (_db.select(_db.courses)..orderBy([
+          (c) => OrderingTerm.asc(c.orden),
+          (c) => OrderingTerm.asc(c.id),
+        ]))
+        .get();
+  }
+
   /// Crea un curso al inicio de la lista y devuelve su id.
   Future<int> crear({required String nombre, required int color}) async {
     // Un número menor que el del primer curso actual lo pone arriba de todos.

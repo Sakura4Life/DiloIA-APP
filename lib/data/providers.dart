@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'courses_repository.dart';
 import 'database.dart';
+import 'dictados_repository.dart';
 import 'tasks_repository.dart';
 
 /// La base de datos de la app. Se abre una sola vez y se comparte. Las pruebas
@@ -20,7 +21,16 @@ final tasksRepositoryProvider = Provider<TasksRepository>(
   (ref) => TasksRepository(ref.watch(databaseProvider)),
 );
 
-/// Cursos en orden alfabético, siempre al día.
+final dictadosRepositoryProvider = Provider<DictadosRepository>(
+  (ref) => DictadosRepository(ref.watch(databaseProvider)),
+);
+
+/// Dictados por voz que todavía no son tareas, del más antiguo al más nuevo.
+final dictadosProvider = StreamProvider<List<Dictado>>(
+  (ref) => ref.watch(dictadosRepositoryProvider).watchTodos(),
+);
+
+/// Cursos en el orden elegido por el usuario, siempre al día.
 final cursosProvider = StreamProvider<List<Course>>(
   (ref) => ref.watch(coursesRepositoryProvider).watchTodos(),
 );

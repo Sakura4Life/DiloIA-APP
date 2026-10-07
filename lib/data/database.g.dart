@@ -830,16 +830,436 @@ class TasksCompanion extends UpdateCompanion<Task> {
   }
 }
 
+class $DictadosTable extends Dictados with TableInfo<$DictadosTable, Dictado> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DictadosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _rutaAudioMeta = const VerificationMeta(
+    'rutaAudio',
+  );
+  @override
+  late final GeneratedColumn<String> rutaAudio = GeneratedColumn<String>(
+    'ruta_audio',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _grabadoEnMeta = const VerificationMeta(
+    'grabadoEn',
+  );
+  @override
+  late final GeneratedColumn<DateTime> grabadoEn = GeneratedColumn<DateTime>(
+    'grabado_en',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<EstadoDictado, String> estado =
+      GeneratedColumn<String>(
+        'estado',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<EstadoDictado>($DictadosTable.$converterestado);
+  static const VerificationMeta _resultadoMeta = const VerificationMeta(
+    'resultado',
+  );
+  @override
+  late final GeneratedColumn<String> resultado = GeneratedColumn<String>(
+    'resultado',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mensajeMeta = const VerificationMeta(
+    'mensaje',
+  );
+  @override
+  late final GeneratedColumn<String> mensaje = GeneratedColumn<String>(
+    'mensaje',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    rutaAudio,
+    grabadoEn,
+    estado,
+    resultado,
+    mensaje,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dictados';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Dictado> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('ruta_audio')) {
+      context.handle(
+        _rutaAudioMeta,
+        rutaAudio.isAcceptableOrUnknown(data['ruta_audio']!, _rutaAudioMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rutaAudioMeta);
+    }
+    if (data.containsKey('grabado_en')) {
+      context.handle(
+        _grabadoEnMeta,
+        grabadoEn.isAcceptableOrUnknown(data['grabado_en']!, _grabadoEnMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_grabadoEnMeta);
+    }
+    if (data.containsKey('resultado')) {
+      context.handle(
+        _resultadoMeta,
+        resultado.isAcceptableOrUnknown(data['resultado']!, _resultadoMeta),
+      );
+    }
+    if (data.containsKey('mensaje')) {
+      context.handle(
+        _mensajeMeta,
+        mensaje.isAcceptableOrUnknown(data['mensaje']!, _mensajeMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Dictado map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Dictado(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      rutaAudio: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ruta_audio'],
+      )!,
+      grabadoEn: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}grabado_en'],
+      )!,
+      estado: $DictadosTable.$converterestado.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}estado'],
+        )!,
+      ),
+      resultado: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resultado'],
+      ),
+      mensaje: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mensaje'],
+      ),
+    );
+  }
+
+  @override
+  $DictadosTable createAlias(String alias) {
+    return $DictadosTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<EstadoDictado, String, String> $converterestado =
+      const EnumNameConverter<EstadoDictado>(EstadoDictado.values);
+}
+
+class Dictado extends DataClass implements Insertable<Dictado> {
+  final int id;
+
+  /// Archivo WAV en la carpeta de la app. Se borra junto con la fila.
+  final String rutaAudio;
+
+  /// Cuándo se grabó. Se envía a la IA como "hoy", para que "mañana" se
+  /// entienda respecto al día en que se habló y no al día en que se procesa.
+  final DateTime grabadoEn;
+  final EstadoDictado estado;
+
+  /// Lo que respondió la IA, tal cual (JSON). Solo cuando el estado es `listo`.
+  final String? resultado;
+
+  /// Mensaje para el usuario si algo salió mal, por ejemplo "Sin conexión".
+  final String? mensaje;
+  const Dictado({
+    required this.id,
+    required this.rutaAudio,
+    required this.grabadoEn,
+    required this.estado,
+    this.resultado,
+    this.mensaje,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['ruta_audio'] = Variable<String>(rutaAudio);
+    map['grabado_en'] = Variable<DateTime>(grabadoEn);
+    {
+      map['estado'] = Variable<String>(
+        $DictadosTable.$converterestado.toSql(estado),
+      );
+    }
+    if (!nullToAbsent || resultado != null) {
+      map['resultado'] = Variable<String>(resultado);
+    }
+    if (!nullToAbsent || mensaje != null) {
+      map['mensaje'] = Variable<String>(mensaje);
+    }
+    return map;
+  }
+
+  DictadosCompanion toCompanion(bool nullToAbsent) {
+    return DictadosCompanion(
+      id: Value(id),
+      rutaAudio: Value(rutaAudio),
+      grabadoEn: Value(grabadoEn),
+      estado: Value(estado),
+      resultado: resultado == null && nullToAbsent
+          ? const Value.absent()
+          : Value(resultado),
+      mensaje: mensaje == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mensaje),
+    );
+  }
+
+  factory Dictado.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Dictado(
+      id: serializer.fromJson<int>(json['id']),
+      rutaAudio: serializer.fromJson<String>(json['rutaAudio']),
+      grabadoEn: serializer.fromJson<DateTime>(json['grabadoEn']),
+      estado: $DictadosTable.$converterestado.fromJson(
+        serializer.fromJson<String>(json['estado']),
+      ),
+      resultado: serializer.fromJson<String?>(json['resultado']),
+      mensaje: serializer.fromJson<String?>(json['mensaje']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'rutaAudio': serializer.toJson<String>(rutaAudio),
+      'grabadoEn': serializer.toJson<DateTime>(grabadoEn),
+      'estado': serializer.toJson<String>(
+        $DictadosTable.$converterestado.toJson(estado),
+      ),
+      'resultado': serializer.toJson<String?>(resultado),
+      'mensaje': serializer.toJson<String?>(mensaje),
+    };
+  }
+
+  Dictado copyWith({
+    int? id,
+    String? rutaAudio,
+    DateTime? grabadoEn,
+    EstadoDictado? estado,
+    Value<String?> resultado = const Value.absent(),
+    Value<String?> mensaje = const Value.absent(),
+  }) => Dictado(
+    id: id ?? this.id,
+    rutaAudio: rutaAudio ?? this.rutaAudio,
+    grabadoEn: grabadoEn ?? this.grabadoEn,
+    estado: estado ?? this.estado,
+    resultado: resultado.present ? resultado.value : this.resultado,
+    mensaje: mensaje.present ? mensaje.value : this.mensaje,
+  );
+  Dictado copyWithCompanion(DictadosCompanion data) {
+    return Dictado(
+      id: data.id.present ? data.id.value : this.id,
+      rutaAudio: data.rutaAudio.present ? data.rutaAudio.value : this.rutaAudio,
+      grabadoEn: data.grabadoEn.present ? data.grabadoEn.value : this.grabadoEn,
+      estado: data.estado.present ? data.estado.value : this.estado,
+      resultado: data.resultado.present ? data.resultado.value : this.resultado,
+      mensaje: data.mensaje.present ? data.mensaje.value : this.mensaje,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Dictado(')
+          ..write('id: $id, ')
+          ..write('rutaAudio: $rutaAudio, ')
+          ..write('grabadoEn: $grabadoEn, ')
+          ..write('estado: $estado, ')
+          ..write('resultado: $resultado, ')
+          ..write('mensaje: $mensaje')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, rutaAudio, grabadoEn, estado, resultado, mensaje);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Dictado &&
+          other.id == this.id &&
+          other.rutaAudio == this.rutaAudio &&
+          other.grabadoEn == this.grabadoEn &&
+          other.estado == this.estado &&
+          other.resultado == this.resultado &&
+          other.mensaje == this.mensaje);
+}
+
+class DictadosCompanion extends UpdateCompanion<Dictado> {
+  final Value<int> id;
+  final Value<String> rutaAudio;
+  final Value<DateTime> grabadoEn;
+  final Value<EstadoDictado> estado;
+  final Value<String?> resultado;
+  final Value<String?> mensaje;
+  const DictadosCompanion({
+    this.id = const Value.absent(),
+    this.rutaAudio = const Value.absent(),
+    this.grabadoEn = const Value.absent(),
+    this.estado = const Value.absent(),
+    this.resultado = const Value.absent(),
+    this.mensaje = const Value.absent(),
+  });
+  DictadosCompanion.insert({
+    this.id = const Value.absent(),
+    required String rutaAudio,
+    required DateTime grabadoEn,
+    required EstadoDictado estado,
+    this.resultado = const Value.absent(),
+    this.mensaje = const Value.absent(),
+  }) : rutaAudio = Value(rutaAudio),
+       grabadoEn = Value(grabadoEn),
+       estado = Value(estado);
+  static Insertable<Dictado> custom({
+    Expression<int>? id,
+    Expression<String>? rutaAudio,
+    Expression<DateTime>? grabadoEn,
+    Expression<String>? estado,
+    Expression<String>? resultado,
+    Expression<String>? mensaje,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (rutaAudio != null) 'ruta_audio': rutaAudio,
+      if (grabadoEn != null) 'grabado_en': grabadoEn,
+      if (estado != null) 'estado': estado,
+      if (resultado != null) 'resultado': resultado,
+      if (mensaje != null) 'mensaje': mensaje,
+    });
+  }
+
+  DictadosCompanion copyWith({
+    Value<int>? id,
+    Value<String>? rutaAudio,
+    Value<DateTime>? grabadoEn,
+    Value<EstadoDictado>? estado,
+    Value<String?>? resultado,
+    Value<String?>? mensaje,
+  }) {
+    return DictadosCompanion(
+      id: id ?? this.id,
+      rutaAudio: rutaAudio ?? this.rutaAudio,
+      grabadoEn: grabadoEn ?? this.grabadoEn,
+      estado: estado ?? this.estado,
+      resultado: resultado ?? this.resultado,
+      mensaje: mensaje ?? this.mensaje,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (rutaAudio.present) {
+      map['ruta_audio'] = Variable<String>(rutaAudio.value);
+    }
+    if (grabadoEn.present) {
+      map['grabado_en'] = Variable<DateTime>(grabadoEn.value);
+    }
+    if (estado.present) {
+      map['estado'] = Variable<String>(
+        $DictadosTable.$converterestado.toSql(estado.value),
+      );
+    }
+    if (resultado.present) {
+      map['resultado'] = Variable<String>(resultado.value);
+    }
+    if (mensaje.present) {
+      map['mensaje'] = Variable<String>(mensaje.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DictadosCompanion(')
+          ..write('id: $id, ')
+          ..write('rutaAudio: $rutaAudio, ')
+          ..write('grabadoEn: $grabadoEn, ')
+          ..write('estado: $estado, ')
+          ..write('resultado: $resultado, ')
+          ..write('mensaje: $mensaje')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $CoursesTable courses = $CoursesTable(this);
   late final $TasksTable tasks = $TasksTable(this);
+  late final $DictadosTable dictados = $DictadosTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [courses, tasks];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    courses,
+    tasks,
+    dictados,
+  ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
     WritePropagation(
@@ -1491,6 +1911,221 @@ typedef $$TasksTableProcessedTableManager =
       Task,
       PrefetchHooks Function({bool courseId})
     >;
+typedef $$DictadosTableCreateCompanionBuilder = DictadosCompanion Function({
+  Value<int> id,
+  required String rutaAudio,
+  required DateTime grabadoEn,
+  required EstadoDictado estado,
+  Value<String?> resultado,
+  Value<String?> mensaje,
+});
+typedef $$DictadosTableUpdateCompanionBuilder = DictadosCompanion Function({
+  Value<int> id,
+  Value<String> rutaAudio,
+  Value<DateTime> grabadoEn,
+  Value<EstadoDictado> estado,
+  Value<String?> resultado,
+  Value<String?> mensaje,
+});
+
+class $$DictadosTableFilterComposer
+    extends Composer<_$AppDatabase, $DictadosTable> {
+  $$DictadosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rutaAudio => $composableBuilder(
+    column: $table.rutaAudio,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get grabadoEn => $composableBuilder(
+    column: $table.grabadoEn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<EstadoDictado, EstadoDictado, String>
+  get estado => $composableBuilder(
+    column: $table.estado,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get resultado => $composableBuilder(
+    column: $table.resultado,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mensaje => $composableBuilder(
+    column: $table.mensaje,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DictadosTableOrderingComposer
+    extends Composer<_$AppDatabase, $DictadosTable> {
+  $$DictadosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rutaAudio => $composableBuilder(
+    column: $table.rutaAudio,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get grabadoEn => $composableBuilder(
+    column: $table.grabadoEn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get estado => $composableBuilder(
+    column: $table.estado,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resultado => $composableBuilder(
+    column: $table.resultado,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mensaje => $composableBuilder(
+    column: $table.mensaje,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DictadosTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DictadosTable> {
+  $$DictadosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get rutaAudio =>
+      $composableBuilder(column: $table.rutaAudio, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get grabadoEn =>
+      $composableBuilder(column: $table.grabadoEn, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<EstadoDictado, String> get estado =>
+      $composableBuilder(column: $table.estado, builder: (column) => column);
+
+  GeneratedColumn<String> get resultado =>
+      $composableBuilder(column: $table.resultado, builder: (column) => column);
+
+  GeneratedColumn<String> get mensaje =>
+      $composableBuilder(column: $table.mensaje, builder: (column) => column);
+}
+
+class $$DictadosTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DictadosTable,
+          Dictado,
+          $$DictadosTableFilterComposer,
+          $$DictadosTableOrderingComposer,
+          $$DictadosTableAnnotationComposer,
+          $$DictadosTableCreateCompanionBuilder,
+          $$DictadosTableUpdateCompanionBuilder,
+          (Dictado, BaseReferences<_$AppDatabase, $DictadosTable, Dictado>),
+          Dictado,
+          PrefetchHooks Function()
+        > {
+  $$DictadosTableTableManager(_$AppDatabase db, $DictadosTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DictadosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DictadosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DictadosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> rutaAudio = const Value.absent(),
+                Value<DateTime> grabadoEn = const Value.absent(),
+                Value<EstadoDictado> estado = const Value.absent(),
+                Value<String?> resultado = const Value.absent(),
+                Value<String?> mensaje = const Value.absent(),
+              }) => DictadosCompanion(
+                id: id,
+                rutaAudio: rutaAudio,
+                grabadoEn: grabadoEn,
+                estado: estado,
+                resultado: resultado,
+                mensaje: mensaje,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String rutaAudio,
+                required DateTime grabadoEn,
+                required EstadoDictado estado,
+                Value<String?> resultado = const Value.absent(),
+                Value<String?> mensaje = const Value.absent(),
+              }) => DictadosCompanion.insert(
+                id: id,
+                rutaAudio: rutaAudio,
+                grabadoEn: grabadoEn,
+                estado: estado,
+                resultado: resultado,
+                mensaje: mensaje,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$DictadosTable, Dictado>(table),
+                  BaseReferences<_$AppDatabase, $DictadosTable, Dictado>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DictadosTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DictadosTable,
+      Dictado,
+      $$DictadosTableFilterComposer,
+      $$DictadosTableOrderingComposer,
+      $$DictadosTableAnnotationComposer,
+      $$DictadosTableCreateCompanionBuilder,
+      $$DictadosTableUpdateCompanionBuilder,
+      (Dictado, BaseReferences<_$AppDatabase, $DictadosTable, Dictado>),
+      Dictado,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1499,4 +2134,6 @@ class $AppDatabaseManager {
       $$CoursesTableTableManager(_db, _db.courses);
   $$TasksTableTableManager get tasks =>
       $$TasksTableTableManager(_db, _db.tasks);
+  $$DictadosTableTableManager get dictados =>
+      $$DictadosTableTableManager(_db, _db.dictados);
 }

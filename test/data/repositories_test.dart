@@ -1,6 +1,7 @@
 import 'package:diloia_app/core/constants.dart';
 import 'package:diloia_app/data/courses_repository.dart';
 import 'package:diloia_app/data/database.dart';
+import 'package:diloia_app/data/dictados_repository.dart';
 import 'package:diloia_app/data/tasks_repository.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
@@ -217,6 +218,43 @@ void main() {
     final lista = await CoursesRepository(vieja).watchTodos().first;
 
     expect(lista.map((c) => c.nombre), ['Álgebra', 'ética', 'Química']);
+  });
+
+  test('migra la versión 3 agregando la cola de dictados', () async {
+    final vieja = AppDatabase(
+      NativeDatabase.memory(
+        setup: (sqlite) {
+          sqlite.execute(
+            'CREATE TABLE courses (id INTEGER NOT NULL PRIMARY KEY '
+            'AUTOINCREMENT, nombre TEXT NOT NULL, color INTEGER NOT NULL, '
+            'orden INTEGER NOT NULL DEFAULT 0);',
+          );
+          sqlite.execute(
+            'CREATE TABLE tasks (id INTEGER NOT NULL PRIMARY KEY '
+            'AUTOINCREMENT, course_id INTEGER NOT NULL REFERENCES courses (id) '
+            'ON DELETE CASCADE, tipo TEXT NOT NULL, titulo TEXT NULL, '
+            'inicio INTEGER NOT NULL, duracion_minutos INTEGER NOT NULL, '
+            'peso_porcentaje REAL NULL, completada INTEGER NOT NULL DEFAULT 0);',
+          );
+          sqlite.execute(
+            "INSERT INTO courses (nombre, color, orden) VALUES ('Física', 1, 0);",
+          );
+          sqlite.execute('PRAGMA user_version = 3;');
+        },
+      ),
+    );
+    addTearDown(vieja.close);
+
+    final repo = DictadosRepository(vieja, borrarArchivo: (_) async {});
+    final id = await repo.crear(
+      rutaAudio: 'a.wav',
+      grabadoEn: DateTime(2026, 10, 6),
+    );
+
+    expect((await repo.obtener(id))!.estado, EstadoDictado.esperando);
+    // Los cursos de antes siguen ahí.
+    final lista = await CoursesRepository(vieja).watchTodos().first;
+    expect(lista.single.nombre, 'Física');
   });
 
   test('claveDeOrden ignora tildes, mayúsculas y espacios', () {

@@ -1,6 +1,7 @@
 import 'package:diloia_app/core/constants.dart';
 import 'package:diloia_app/core/formato.dart';
 import 'package:diloia_app/data/database.dart';
+import 'package:diloia_app/data/dictados_repository.dart';
 import 'package:diloia_app/data/providers.dart';
 import 'package:diloia_app/features/tasks/task_draft.dart';
 import 'package:diloia_app/features/tasks/task_form_screen.dart';
@@ -111,10 +112,19 @@ void main() {
 
     /// Abre una pantalla con un botón que lleva al formulario, para poder
     /// probar el "atrás".
-    Future<void> abrir(WidgetTester tester, {BorradorTarea? borrador}) async {
+    Future<void> abrir(
+      WidgetTester tester, {
+      BorradorTarea? borrador,
+      DesdeDictado? dictado,
+    }) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [databaseProvider.overrideWithValue(db)],
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            dictadosRepositoryProvider.overrideWithValue(
+              DictadosRepository(db, borrarArchivo: (_) async {}),
+            ),
+          ],
           child: MaterialApp(
             locale: const Locale('es'),
             supportedLocales: const [Locale('es')],
@@ -124,7 +134,8 @@ void main() {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => TaskFormScreen(borrador: borrador),
+                    builder: (_) =>
+                        TaskFormScreen(borrador: borrador, dictado: dictado),
                   ),
                 ),
                 child: const Text('Inicio'),
@@ -258,6 +269,113 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Inicio'), findsOneWidget);
       await cerrar(tester);
+    });
+
+    group('tarjeta de un dictado', () {
+      late int dictado;
+
+      setUp(() async {
+        dictado = await db
+            .into(db.dictados)
+            .insert(
+              DictadosCompanion.insert(
+                rutaAudio: 'a.wav',
+                grabadoEn: DateTime.now(),
+                estado: EstadoDictado.listo,
+              ),
+            );
+      });
+
+      DateTime enCincoDias() {
+        final dia = DateTime.now().add(const Duration(days: 5));
+        return DateTime(dia.year, dia.month, dia.day);
+      }
+
+      testWidgets('muestra lo que entendió la IA', (tester) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(courseId: curso, tipo: TipoActividad.examen),
+          dictado: DesdeDictado(
+            id: dictado,
+            transcripcion: 'examen de física el viernes',
+          ),
+        );
+
+        expect(find.text('Revisar dictado'), findsOneWidget);
+        expect(
+          find.text('Entendí: «examen de física el viernes»'),
+          findsOneWidget,
+        );
+        await cerrar(tester);
+      });
+
+      testWidgets('al guardar, el dictado sale de la cola', (tester) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(
+            courseId: curso,
+            tipo: TipoActividad.examen,
+            fecha: enCincoDias(),
+            hora: const TimeOfDay(hour: 8, minute: 0),
+          ),
+          dictado: DesdeDictado(id: dictado, transcripcion: 'x'),
+        );
+
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect(await db.select(db.tasks).get(), hasLength(1));
+        expect(await db.select(db.dictados).get(), isEmpty);
+        await cerrar(tester);
+      });
+
+      testWidgets('salir sin cambios no pregunta y conserva el dictado', (
+        tester,
+      ) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(courseId: curso, tipo: TipoActividad.examen),
+          dictado: DesdeDictado(id: dictado, transcripcion: 'x'),
+        );
+
+        await atrasDelTelefono(tester);
+
+        expect(find.text('Inicio'), findsOneWidget);
+        expect(await db.select(db.dictados).get(), hasLength(1));
+        await cerrar(tester);
+      });
+
+      testWidgets('ofrece crear el curso dictado con su nombre ya escrito', (
+        tester,
+      ) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(tipo: TipoActividad.exposicion),
+          dictado: DesdeDictado(
+            id: dictado,
+            transcripcion: 'exposición de historia',
+            materiaNueva: 'Historia',
+          ),
+        );
+        expect(
+          find.textContaining('El curso «Historia» no existe'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Crear curso'));
+        await tester.pumpAndSettle();
+        // Es un curso nuevo, con el nombre dictado ya escrito.
+        expect(find.text('Nuevo curso'), findsOneWidget);
+        expect(find.widgetWithText(TextFormField, 'Historia'), findsOneWidget);
+        await tester.tap(find.text('Guardar').last);
+        await tester.pumpAndSettle();
+
+        // El curso quedó elegido y el aviso desaparece.
+        final cursos = await db.select(db.courses).get();
+        expect(cursos.map((c) => c.nombre), contains('Historia'));
+        expect(find.textContaining('no existe'), findsNothing);
+        await cerrar(tester);
+      });
     });
   });
 }

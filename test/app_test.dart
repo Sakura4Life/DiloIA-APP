@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:diloia_app/app.dart';
 import 'package:diloia_app/core/constants.dart';
 import 'package:diloia_app/core/formato.dart';
 import 'package:diloia_app/data/database.dart';
+import 'package:diloia_app/data/dictados_repository.dart';
 import 'package:diloia_app/data/providers.dart';
+import 'package:diloia_app/features/voice/providers_voz.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
+
+import 'ayudantes.dart';
 
 void main() {
   late AppDatabase db;
@@ -37,7 +43,15 @@ void main() {
   Future<void> abrirApp(WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          // Sin disco: borrar un dictado no toca archivos.
+          dictadosRepositoryProvider.overrideWithValue(
+            DictadosRepository(db, borrarArchivo: (_) async {}),
+          ),
+          // Sin red: así la cola no intenta llamar a la IA de verdad.
+          conectividadProvider.overrideWithValue(ConectividadFalsa()),
+        ],
         child: const DiloIAApp(),
       ),
     );
@@ -288,5 +302,104 @@ void main() {
 
     expect(find.text('Cálculo II'), findsOneWidget);
     await cerrar(tester);
+  });
+
+  group('Por revisar', () {
+    Future<void> crearDictados() async {
+      await db
+          .into(db.dictados)
+          .insert(
+            DictadosCompanion.insert(
+              rutaAudio: 'no_existe_1.wav',
+              grabadoEn: DateTime.now(),
+              estado: EstadoDictado.esperando,
+              mensaje: const Value('Sin conexión con el servicio de IA.'),
+            ),
+          );
+      await db
+          .into(db.dictados)
+          .insert(
+            DictadosCompanion.insert(
+              rutaAudio: 'no_existe_2.wav',
+              grabadoEn: DateTime.now(),
+              estado: EstadoDictado.listo,
+              resultado: Value(
+                jsonEncode({
+                  'transcripcion': 'exposición de historia el viernes',
+                  'tipo': 'exposicion',
+                  'materia': 'Historia',
+                }),
+              ),
+            ),
+          );
+    }
+
+    testWidgets('sin dictados no se muestra el aviso', (tester) async {
+      await abrirApp(tester);
+
+      expect(find.textContaining('por revisar'), findsNothing);
+      await cerrar(tester);
+    });
+
+    testWidgets('el aviso cuenta los dictados y abre la lista', (tester) async {
+      await crearDictados();
+      await abrirApp(tester);
+
+      expect(find.text('2 dictados por revisar'), findsOneWidget);
+      expect(find.text('1 listo · 1 esperando conexión'), findsOneWidget);
+
+      await tester.tap(find.text('2 dictados por revisar'));
+      await tester.pumpAndSettle();
+      expect(find.text('«exposición de historia el viernes»'), findsOneWidget);
+      expect(find.text('Sin conexión con el servicio de IA.'), findsOneWidget);
+      await cerrar(tester);
+    });
+
+    testWidgets('un dictado listo abre la tarjeta con lo que entendió la IA', (
+      tester,
+    ) async {
+      await crearDictados();
+      await abrirApp(tester);
+      await tester.tap(find.text('2 dictados por revisar'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('«exposición de historia el viernes»'));
+      // Antes de abrir la tarjeta se leen los cursos de la base; mientras
+      // tanto no hay animación, así que se avanza el reloj a mano.
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Revisar dictado'), findsOneWidget);
+      expect(
+        find.text('Entendí: «exposición de historia el viernes»'),
+        findsOneWidget,
+      );
+      // "Historia" no está entre los cursos: ofrece crearlo.
+      expect(
+        find.textContaining('El curso «Historia» no existe'),
+        findsOneWidget,
+      );
+      await cerrar(tester);
+    });
+
+    testWidgets('descartar pide confirmación y borra el dictado', (
+      tester,
+    ) async {
+      await crearDictados();
+      await abrirApp(tester);
+      await tester.tap(find.text('2 dictados por revisar'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Opciones').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Descartar'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Descartar este dictado?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Descartar'));
+      await tester.pumpAndSettle();
+
+      expect(await db.select(db.dictados).get(), hasLength(1));
+      await cerrar(tester);
+    });
   });
 }

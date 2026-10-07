@@ -8,6 +8,7 @@ import 'features/courses/courses_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/tasks/task_form_screen.dart';
 import 'features/tasks/tasks_screen.dart';
+import 'features/voice/cola_automatica.dart';
 import 'features/voice/voice_button.dart';
 
 /// Raíz visual de la app: tema, idioma y pantalla inicial.
@@ -26,7 +27,9 @@ class DiloIAApp extends StatelessWidget {
       supportedLocales: const [Locale('es')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       builder: (context, child) => _BarraDelSistema(child: child!),
-      home: const HomeShell(),
+      // ColaAutomatica envía a la IA los dictados guardados sin internet
+      // apenas vuelve la conexión.
+      home: const ColaAutomatica(child: HomeShell()),
     );
   }
 }
