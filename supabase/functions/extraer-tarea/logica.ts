@@ -12,11 +12,17 @@ export const MODELO_GEMINI = "gemini-3.5-flash-lite";
 export const TIPOS = [
   "entrega",
   "examen",
-  "proyecto",
   "exposicion",
+  "reunion",
   "otro",
 ] as const;
 export type Tipo = (typeof TIPOS)[number];
+
+/**
+ * Tipos que son un plazo (una fecha y hora límite) y no un evento con
+ * duración. Para ellos no se pide `horaFin`.
+ */
+export const TIPOS_PLAZO: readonly Tipo[] = ["entrega"];
 
 /** Formatos de audio que acepta Gemini. La app manda WAV de 16 kHz mono. */
 export const MIME_AUDIO = [
@@ -56,6 +62,11 @@ export interface Resultado {
   titulo: string | null;
   fecha: string | null;
   hora: string | null;
+  /**
+   * Hora en que termina, solo para eventos (todo menos entrega). La app
+   * calcula la duración con `hora` y `horaFin`. Agregado en la fase 5.
+   */
+  horaFin: string | null;
   peso: number | null;
 }
 
@@ -188,12 +199,16 @@ Reglas:
   abreviado, sin tildes o con otras palabras, ej. "cálculo" por "Cálculo II"),
   escribe el nombre EXACTO de la lista. Si no coincide con ninguno, escribe el
   nombre tal como lo dijo, con mayúscula inicial. null si no menciona curso.
-- tipo: uno de entrega, examen, proyecto, exposicion, otro.
+- tipo: uno de entrega, examen, exposicion, reunion, otro.
   * examen: examen, parcial, final, práctica calificada, PC, quiz, control.
-  * entrega: tarea, informe, laboratorio, trabajo para entregar, ensayo.
-  * proyecto: proyecto, trabajo final o de investigación de varias semanas.
+  * entrega: algo que se entrega hasta una fecha y hora límite: tarea,
+    informe, laboratorio, ensayo, monografía, proyecto, trabajo final, avance
+    de tesis, artículo.
   * exposicion: exposición, presentación oral, sustentación.
-  * otro: cualquier otra cosa.
+  * reunion: reunión de grupo, asesoría con el profesor o el jefe de
+    práctica, reunión de coordinación.
+  * otro: actividades con horario que no son las anteriores: congreso,
+    charla, taller, conferencia, visita de campo, clase de recuperación.
 - titulo: nombre corto (máximo 6 palabras) que distinga la actividad, ej.
   "Laboratorio 3", "Informe de química orgánica", "Segundo parcial",
   "Proyecto final". Si el tipo es parte del nombre, consérvalo ("proyecto
@@ -210,6 +225,13 @@ Reglas:
   * Sin mañana/tarde/noche, elige la hora entre 07:00 y 22:59 (ej. "a las 4"
     = 16:00, "a las 8" = 08:00, "a las 10" = 10:00).
   * null si no menciona hora.
+- horaFin: hora en que TERMINA, HH:mm en formato de 24 horas. Solo para
+  examen, exposicion, reunion u otro; para entrega siempre null.
+  * "de 4 a 5" = hora 16:00, horaFin 17:00. "hasta las 11 y media" = 11:30.
+  * Si dice cuánto dura, súmalo a la hora: "examen de 3 horas a las 8" =
+    hora 08:00, horaFin 11:00.
+  * Debe ser después de la hora de inicio, el mismo día.
+  * null si no dice hasta qué hora ni cuánto dura.
 - peso: porcentaje de la nota como número (ej. "vale 20%" = 20). Si lo dice en
   puntos sobre 20, conviértelo (ej. "vale 4 puntos" = 20). null si no lo dice.
 - No inventes datos: lo que no se mencione va como null.`;
@@ -225,6 +247,10 @@ export const ESQUEMA_RESPUESTA = {
     titulo: { type: ["string", "null"] },
     fecha: { type: ["string", "null"], description: "YYYY-MM-DD" },
     hora: { type: ["string", "null"], description: "HH:mm, 24 horas" },
+    horaFin: {
+      type: ["string", "null"],
+      description: "HH:mm, 24 horas. Nunca en entrega",
+    },
     peso: { type: ["number", "null"], description: "Porcentaje, 0 a 100" },
   },
   required: [
@@ -234,6 +260,7 @@ export const ESQUEMA_RESPUESTA = {
     "titulo",
     "fecha",
     "hora",
+    "horaFin",
     "peso",
   ],
 };
@@ -272,10 +299,11 @@ export function normalizarResultado(
   crudo: unknown,
   peticion: Peticion,
 ): Resultado {
-  const r = (typeof crudo === "object" && crudo !== null ? crudo : {}) as Record<
-    string,
-    unknown
-  >;
+  const r =
+    (typeof crudo === "object" && crudo !== null ? crudo : {}) as Record<
+      string,
+      unknown
+    >;
 
   const tipo = TIPOS.includes(r.tipo as Tipo) ? (r.tipo as Tipo) : "otro";
 
@@ -293,15 +321,14 @@ export function normalizarResultado(
     ? fechaCruda
     : null;
 
-  let hora: string | null = null;
-  const horaCruda = textoONulo(r.hora, 5);
-  const partes = horaCruda?.match(/^(\d{1,2}):(\d{2})$/);
-  if (partes) {
-    const h = Number(partes[1]);
-    const m = Number(partes[2]);
-    if (h <= 23 && m <= 59) {
-      hora = `${String(h).padStart(2, "0")}:${partes[2]}`;
-    }
+  const hora = leerHora(r.hora);
+
+  // La hora de fin solo vale para eventos, con hora de inicio, y si termina
+  // después de empezar. Si no, la app usa la duración por defecto del tipo.
+  // ("HH:mm" con dos dígitos se puede comparar como texto.)
+  let horaFin = leerHora(r.horaFin);
+  if (TIPOS_PLAZO.includes(tipo) || hora === null || (horaFin ?? "") <= hora) {
+    horaFin = null;
   }
 
   let peso: number | null = null;
@@ -321,6 +348,17 @@ export function normalizarResultado(
     titulo: textoONulo(r.titulo, 80),
     fecha,
     hora,
+    horaFin,
     peso,
   };
+}
+
+/** "16:00" o "9:30" → "16:00" / "09:30". Cualquier otra cosa → null. */
+function leerHora(valor: unknown): string | null {
+  const partes = textoONulo(valor, 5)?.match(/^(\d{1,2}):(\d{2})$/);
+  if (!partes) return null;
+  const h = Number(partes[1]);
+  const m = Number(partes[2]);
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, "0")}:${partes[2]}`;
 }

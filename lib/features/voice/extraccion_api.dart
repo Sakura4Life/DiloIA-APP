@@ -16,6 +16,7 @@ class ResultadoIA {
     this.titulo,
     this.fecha,
     this.hora,
+    this.horaFin,
     this.peso,
   });
 
@@ -35,6 +36,8 @@ class ResultadoIA {
       titulo: texto('titulo'),
       fecha: texto('fecha'),
       hora: texto('hora'),
+      // Los dictados guardados antes de la fase 5 no lo traen: queda null.
+      horaFin: texto('horaFin'),
       peso: peso is num ? peso.toDouble() : null,
     );
   }
@@ -47,13 +50,14 @@ class ResultadoIA {
     'titulo': titulo,
     'fecha': fecha,
     'hora': hora,
+    'horaFin': horaFin,
     'peso': peso,
   };
 
   /// Lo que escuchó la IA, palabra por palabra.
   final String transcripcion;
 
-  /// "entrega", "examen", "proyecto", "exposicion" u "otro".
+  /// "entrega", "examen", "exposicion", "reunion" u "otro".
   final String tipo;
   final String? materia;
   final String? titulo;
@@ -63,6 +67,9 @@ class ResultadoIA {
 
   /// `HH:mm`, de 24 horas.
   final String? hora;
+
+  /// Hora en que termina (`HH:mm`), solo en eventos: "de 4 a 5" → "17:00".
+  final String? horaFin;
 
   /// Porcentaje de la nota.
   final double? peso;

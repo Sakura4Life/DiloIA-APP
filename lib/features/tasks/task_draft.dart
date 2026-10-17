@@ -13,18 +13,27 @@ class BorradorTarea {
     this.titulo,
     this.fecha,
     this.hora,
+    this.duracion,
     this.peso,
   });
 
   /// Borrador con los datos de una tarea ya guardada, para editarla.
-  factory BorradorTarea.desdeTarea(Task tarea) => BorradorTarea(
-    courseId: tarea.courseId,
-    tipo: tarea.tipo,
-    titulo: tarea.titulo,
-    fecha: tarea.inicio,
-    hora: TimeOfDay.fromDateTime(tarea.inicio),
-    peso: tarea.pesoPorcentaje,
-  );
+  factory BorradorTarea.desdeTarea(Task tarea) {
+    final duracion = Duration(minutes: tarea.duracionMinutos);
+    return BorradorTarea(
+      courseId: tarea.courseId,
+      tipo: tarea.tipo,
+      titulo: tarea.titulo,
+      fecha: tarea.inicio,
+      hora: TimeOfDay.fromDateTime(tarea.inicio),
+      // Solo se guarda si el usuario la había cambiado: así, si ahora cambia
+      // el tipo, toma la duración del tipo nuevo.
+      duracion: tarea.tipo.esPlazo || duracion == tarea.tipo.duracionPorDefecto
+          ? null
+          : duracion,
+      peso: tarea.pesoPorcentaje,
+    );
+  }
 
   int? courseId;
   TipoActividad? tipo;
@@ -35,7 +44,27 @@ class BorradorTarea {
   /// Solo importa el día; la hora va aparte en [hora].
   DateTime? fecha;
   TimeOfDay? hora;
+
+  /// Duración elegida por el usuario (o entendida por la IA). Si es `null`,
+  /// se usa la del tipo. Los plazos no tienen duración.
+  Duration? duracion;
   double? peso;
+
+  /// La duración que se guardará: la elegida, la del tipo, o cero en los
+  /// plazos (entrega y proyecto).
+  Duration get duracionFinal {
+    final t = tipo;
+    if (t == null || t.esPlazo) return Duration.zero;
+    return duracion ?? t.duracionPorDefecto;
+  }
+
+  /// Cuándo termina, si es un evento con fecha y hora. `null` en los plazos.
+  DateTime? get fin {
+    final momento = inicio;
+    final t = tipo;
+    if (momento == null || t == null || t.esPlazo) return null;
+    return momento.add(duracionFinal);
+  }
 
   /// Campos obligatorios que faltan, en el orden en que aparecen en pantalla.
   List<String> get faltantes => [

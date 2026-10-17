@@ -30,11 +30,20 @@ enum EstadoDictado {
 /// Los nombres del enum coinciden exactamente con el campo `tipo` del JSON que
 /// devuelve la Edge Function, así que se convierten con
 /// `TipoActividad.values.byName(json['tipo'])`.
+///
+/// Hay dos clases de actividad:
+/// - **Plazo** (entrega): una fecha y hora límite, sin duración. Incluye
+///   proyectos, informes, avances de tesis…; el título dice cuál es.
+/// - **Eventos** (examen, exposición, reunión, otro): ocupan un lapso de
+///   tiempo, por ejemplo un examen de 4:00 a 6:00 p. m.
+///
+/// Hasta la fase 5 existía "proyecto"; la versión 5 de la base lo convirtió
+/// en entrega.
 enum TipoActividad {
-  entrega('Entrega', Duration(hours: 1)),
+  entrega('Entrega', Duration.zero),
   examen('Examen', Duration(hours: 2)),
-  proyecto('Proyecto', Duration(hours: 1)),
   exposicion('Exposición', Duration(hours: 1)),
+  reunion('Reunión', Duration(hours: 1)),
   otro('Otro', Duration(hours: 1));
 
   const TipoActividad(this.etiqueta, this.duracionPorDefecto);
@@ -42,6 +51,11 @@ enum TipoActividad {
   /// Texto que se muestra en pantalla.
   final String etiqueta;
 
-  /// Duración que se asume para detectar choques de horario.
+  /// Duración con la que empieza la tarjeta; el usuario la puede cambiar.
+  /// Es cero en los plazos.
   final Duration duracionPorDefecto;
+
+  /// `true` para la entrega: no tiene duración ni campo "Termina", y nunca
+  /// choca con otras tareas.
+  bool get esPlazo => this == entrega;
 }

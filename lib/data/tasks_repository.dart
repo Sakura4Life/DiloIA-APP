@@ -15,6 +15,18 @@ class TasksRepository {
   /// Tareas ordenadas por fecha, cada una con su curso. Si
   /// [incluirCompletadas] es falso, solo devuelve las pendientes.
   Stream<List<TareaConCurso>> watchTareas({required bool incluirCompletadas}) {
+    return _consulta(incluirCompletadas).watch().map(_leer);
+  }
+
+  /// Las tareas no completadas, una sola vez (sin quedarse escuchando). Se
+  /// usa para buscar choques de horario antes de guardar.
+  Future<List<TareaConCurso>> pendientes() {
+    return _consulta(false).get().then(_leer);
+  }
+
+  JoinedSelectStatement<HasResultSet, dynamic> _consulta(
+    bool incluirCompletadas,
+  ) {
     final consulta = _db.select(_db.tasks).join([
       innerJoin(_db.courses, _db.courses.id.equalsExp(_db.tasks.courseId)),
     ]);
@@ -22,17 +34,13 @@ class TasksRepository {
       consulta.where(_db.tasks.completada.equals(false));
     }
     consulta.orderBy([OrderingTerm.asc(_db.tasks.inicio)]);
-
-    return consulta.watch().map(
-      (filas) => [
-        for (final fila in filas)
-          (
-            tarea: fila.readTable(_db.tasks),
-            curso: fila.readTable(_db.courses),
-          ),
-      ],
-    );
+    return consulta;
   }
+
+  List<TareaConCurso> _leer(List<TypedResult> filas) => [
+    for (final fila in filas)
+      (tarea: fila.readTable(_db.tasks), curso: fila.readTable(_db.courses)),
+  ];
 
   /// Crea una tarea y devuelve su id.
   Future<int> crear(TasksCompanion tarea) {

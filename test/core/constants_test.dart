@@ -2,11 +2,22 @@ import 'package:diloia_app/core/constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('el examen dura 2 horas y los demás tipos 1 hora', () {
+  test('los eventos tienen duración: examen 2 horas, los demás 1 hora', () {
     expect(TipoActividad.examen.duracionPorDefecto, const Duration(hours: 2));
+    expect(
+      TipoActividad.exposicion.duracionPorDefecto,
+      const Duration(hours: 1),
+    );
+    expect(TipoActividad.reunion.duracionPorDefecto, const Duration(hours: 1));
+    expect(TipoActividad.otro.duracionPorDefecto, const Duration(hours: 1));
+  });
+
+  test('solo la entrega es un plazo, sin duración', () {
+    expect(TipoActividad.entrega.esPlazo, isTrue);
+    expect(TipoActividad.entrega.duracionPorDefecto, Duration.zero);
     for (final tipo in TipoActividad.values) {
-      if (tipo == TipoActividad.examen) continue;
-      expect(tipo.duracionPorDefecto, const Duration(hours: 1));
+      if (tipo == TipoActividad.entrega) continue;
+      expect(tipo.esPlazo, isFalse, reason: tipo.name);
     }
   });
 
@@ -14,12 +25,10 @@ void main() {
     const tiposDelContrato = [
       'entrega',
       'examen',
-      'proyecto',
       'exposicion',
+      'reunion',
       'otro',
     ];
-    for (final tipo in tiposDelContrato) {
-      expect(TipoActividad.values.byName(tipo).name, tipo);
-    }
+    expect(TipoActividad.values.map((t) => t.name), tiposDelContrato);
   });
 }

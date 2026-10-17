@@ -257,6 +257,58 @@ void main() {
     expect(lista.single.nombre, 'Física');
   });
 
+  test('migra la versión 4 convirtiendo los proyectos en entregas', () async {
+    final vieja = AppDatabase(
+      NativeDatabase.memory(
+        setup: (sqlite) {
+          sqlite.execute(
+            'CREATE TABLE courses (id INTEGER NOT NULL PRIMARY KEY '
+            'AUTOINCREMENT, nombre TEXT NOT NULL, color INTEGER NOT NULL, '
+            'orden INTEGER NOT NULL DEFAULT 0);',
+          );
+          sqlite.execute(
+            'CREATE TABLE tasks (id INTEGER NOT NULL PRIMARY KEY '
+            'AUTOINCREMENT, course_id INTEGER NOT NULL REFERENCES courses (id) '
+            'ON DELETE CASCADE, tipo TEXT NOT NULL, titulo TEXT NULL, '
+            'inicio INTEGER NOT NULL, duracion_minutos INTEGER NOT NULL, '
+            'peso_porcentaje REAL NULL, completada INTEGER NOT NULL DEFAULT 0);',
+          );
+          sqlite.execute(
+            'CREATE TABLE dictados (id INTEGER NOT NULL PRIMARY KEY '
+            'AUTOINCREMENT, ruta_audio TEXT NOT NULL, grabado_en INTEGER NOT '
+            'NULL, estado TEXT NOT NULL, resultado TEXT NULL, mensaje TEXT '
+            'NULL);',
+          );
+          sqlite.execute(
+            "INSERT INTO courses (nombre, color, orden) VALUES ('Física', 1, 0);",
+          );
+          sqlite.execute(
+            'INSERT INTO tasks (course_id, tipo, titulo, inicio, '
+            'duracion_minutos) VALUES '
+            "(1, 'proyecto', 'Proyecto final', 1791300000, 60), "
+            "(1, 'entrega', NULL, 1791300000, 60), "
+            "(1, 'examen', NULL, 1791300000, 120);",
+          );
+          sqlite.execute('PRAGMA user_version = 4;');
+        },
+      ),
+    );
+    addTearDown(vieja.close);
+
+    final lista = await TasksRepository(vieja)
+        .watchTareas(incluirCompletadas: true)
+        .first;
+
+    expect(lista.map((t) => t.tarea.tipo), [
+      TipoActividad.entrega,
+      TipoActividad.entrega,
+      TipoActividad.examen,
+    ]);
+    // El título se conserva, y las entregas quedan sin duración.
+    expect(lista.first.tarea.titulo, 'Proyecto final');
+    expect(lista.map((t) => t.tarea.duracionMinutos), [0, 0, 120]);
+  });
+
   test('claveDeOrden ignora tildes, mayúsculas y espacios', () {
     expect(claveDeOrden('  Álgebra '), 'algebra');
     expect(claveDeOrden('ESPAÑOL'), 'espanol');

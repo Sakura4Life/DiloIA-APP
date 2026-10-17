@@ -38,4 +38,10 @@ void main() {
     expect(textoPeso(12.5), '12,5%');
     expect(numeroPeso(10.05), '10,05');
   });
+
+  test('la duración se muestra en horas y minutos', () {
+    expect(textoDuracion(const Duration(hours: 2)), '2 h');
+    expect(textoDuracion(const Duration(minutes: 90)), '1 h 30 min');
+    expect(textoDuracion(const Duration(minutes: 45)), '45 min');
+  });
 }

@@ -82,8 +82,10 @@ class AppDatabase extends _$AppDatabase {
   /// - 2: columna `titulo` en Tasks.
   /// - 3: columna `orden` en Courses.
   /// - 4: tabla Dictados (cola de dictados por voz).
+  /// - 5: sin columnas nuevas. Se quitó el tipo "proyecto": esas tareas pasan
+  ///   a "entrega", y las entregas quedan sin duración (son un plazo).
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -98,6 +100,14 @@ class AppDatabase extends _$AppDatabase {
         await _ordenarCursosAlfabeticamente();
       }
       if (desde < 4) await m.createTable(dictados);
+      if (desde < 5) {
+        // Sin esto, leer una tarea "proyecto" haría fallar la app: ese valor
+        // ya no existe en TipoActividad.
+        await customStatement(
+          "UPDATE tasks SET tipo = 'entrega', duracion_minutos = 0 "
+          "WHERE tipo IN ('entrega', 'proyecto')",
+        );
+      }
     },
     beforeOpen: (details) async {
       // SQLite trae las relaciones entre tablas apagadas por defecto. Sin esto,

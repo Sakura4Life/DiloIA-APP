@@ -7,7 +7,9 @@ import '../../core/constants.dart';
 import '../../core/formato.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../data/tasks_repository.dart';
 import '../courses/course_dialog.dart';
+import 'conflictos.dart';
 import 'selector_hora.dart';
 import 'task_draft.dart';
 
@@ -58,8 +60,12 @@ typedef _Contenido = ({
   String titulo,
   DateTime? fecha,
   TimeOfDay? hora,
+  Duration? duracion,
   String peso,
 });
+
+/// Lo que elige el usuario en el aviso de choque de horario.
+enum _AnteChoque { cambiarHora, guardarIgual }
 
 class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   late final BorradorTarea _borrador;
@@ -107,6 +113,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           ? null
           : DateTime(fecha.year, fecha.month, fecha.day),
       hora: _borrador.hora,
+      duracion: _borrador.duracion,
       peso: _peso.text.trim(),
     );
   }
@@ -121,6 +128,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       titulo: '',
       fecha: null,
       hora: null,
+      duracion: null,
       peso: '',
     );
     final actual = _contenido();
@@ -264,6 +272,70 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     }
   }
 
+  /// Hora en que termina un evento. Se guarda como duración (fin − inicio).
+  Future<void> _elegirFin() async {
+    final empieza = _borrador.hora;
+    if (empieza == null) {
+      // Sin hora de inicio no se puede calcular la duración.
+      return _elegirHora();
+    }
+    final elegida = await mostrarSelectorHora(
+      context,
+      titulo: '¿A qué hora termina?',
+      inicial: TimeOfDay.fromDateTime(_finDelDia(empieza)),
+      empiezaA: empieza,
+    );
+    if (elegida == null) return;
+    final minutos =
+        (elegida.hour * 60 + elegida.minute) -
+        (empieza.hour * 60 + empieza.minute);
+    if (minutos > 0) {
+      setState(() => _borrador.duracion = Duration(minutes: minutos));
+    }
+  }
+
+  /// Hora en que termina el evento, si empieza a [hora].
+  DateTime _finDelDia(TimeOfDay hora) =>
+      DateTime(2000, 1, 1, hora.hour, hora.minute).add(_borrador.duracionFinal);
+
+  /// Si el horario de la tarea se puede comparar ahora con los demás. Al
+  /// editar, solo si cambió la fecha, la hora, la duración o el tipo: si solo
+  /// se corrige el título de una tarea que ya chocaba, no se vuelve a avisar.
+  bool _horarioCambio(Task? existente) {
+    if (existente == null) return true;
+    final tipo = _borrador.tipo!;
+    return existente.inicio != _borrador.inicio ||
+        existente.tipo != tipo ||
+        (!tipo.esPlazo &&
+            existente.duracionMinutos != _borrador.duracionFinal.inMinutes);
+  }
+
+  /// Busca choques de horario. Devuelve `true` si se puede guardar: no hay
+  /// choques o el usuario eligió «Guardar igual».
+  Future<bool> _revisarChoques(Task? existente) async {
+    if (!_horarioCambio(existente)) return true;
+    final tareas = await ref.read(tasksRepositoryProvider).pendientes();
+    final choques = detectarConflictos(
+      (
+        inicio: _borrador.inicio!,
+        duracion: _borrador.duracionFinal,
+        tipo: _borrador.tipo!,
+      ),
+      tareas,
+      ignorarId: existente?.id,
+    );
+    if (choques.isEmpty || !mounted) return true;
+
+    final eleccion = await showDialog<_AnteChoque>(
+      context: context,
+      builder: (context) => _AvisoChoque(choques),
+    );
+    if (eleccion == _AnteChoque.guardarIgual) return true;
+    // "Cambiar hora": vuelve a la tarjeta con el selector de hora abierto.
+    if (eleccion == _AnteChoque.cambiarHora && mounted) await _elegirHora();
+    return false;
+  }
+
   Future<void> _guardar() async {
     final pesoValido = _formKey.currentState!.validate();
     final yaPaso = _borrador.yaPaso(
@@ -279,13 +351,19 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     }
 
     setState(() => _guardando = true);
+    final existente = widget.existente;
+    if (!await _revisarChoques(existente)) {
+      if (mounted) setState(() => _guardando = false);
+      return;
+    }
+
     final repo = ref.read(tasksRepositoryProvider);
     final tipo = _borrador.tipo!;
     final inicio = _borrador.inicio!;
+    final duracionMinutos = _borrador.duracionFinal.inMinutes;
     final peso = leerPeso(_peso.text);
     final textoTitulo = _titulo.text.trim();
     final titulo = textoTitulo.isEmpty ? null : textoTitulo;
-    final existente = widget.existente;
 
     if (existente != null) {
       await repo.actualizar(
@@ -294,7 +372,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           tipo: tipo,
           titulo: Value(titulo),
           inicio: inicio,
-          duracionMinutos: tipo.duracionPorDefecto.inMinutes,
+          duracionMinutos: duracionMinutos,
           pesoPorcentaje: Value(peso),
         ),
       );
@@ -305,7 +383,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           tipo: tipo,
           titulo: Value(titulo),
           inicio: inicio,
-          duracionMinutos: tipo.duracionPorDefecto.inMinutes,
+          duracionMinutos: duracionMinutos,
           pesoPorcentaje: Value(peso),
         ),
       );
@@ -325,6 +403,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     final faltan = _mostrarFaltantes ? _borrador.faltantes : const <String>[];
     final fecha = _borrador.fecha;
     final hora = _borrador.hora;
+    final tipo = _borrador.tipo;
     final transcripcion = widget.dictado?.transcripcion;
     final materiaNueva = widget.dictado?.materiaNueva;
     final titulo = _editando
@@ -407,6 +486,18 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                     : null,
                 onTap: _elegirHora,
               ),
+              // Solo los eventos (examen, exposición, otro) duran un tiempo;
+              // las entregas y proyectos son un plazo.
+              if (tipo != null && !tipo.esPlazo)
+                _CampoElegible(
+                  icono: Icons.timelapse_outlined,
+                  etiqueta: 'Termina',
+                  valor: hora == null
+                      ? 'Dura ${textoDuracion(_borrador.duracionFinal)}'
+                      : '${textoHora(_finDelDia(hora))} · dura '
+                            '${textoDuracion(_borrador.duracionFinal)}',
+                  onTap: _elegirFin,
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: TextFormField(
@@ -443,6 +534,85 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         ),
       ),
     );
+  }
+}
+
+/// Aviso de choque de horario, con las tareas que chocan y dos opciones.
+class _AvisoChoque extends StatelessWidget {
+  const _AvisoChoque(this.choques);
+
+  final List<TareaConCurso> choques;
+
+  @override
+  Widget build(BuildContext context) {
+    final textos = Theme.of(context).textTheme;
+    return AlertDialog(
+      icon: const Icon(Icons.event_busy),
+      title: const Text('Choque de horario'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              choques.length == 1
+                  ? 'Esta tarea coincide con:'
+                  : 'Esta tarea coincide con ${choques.length} tareas:',
+            ),
+            const SizedBox(height: 12),
+            for (final item in choques)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, right: 8),
+                      child: CircleAvatar(
+                        radius: 6,
+                        backgroundColor: Color(item.curso.color),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${item.tarea.titulo ?? item.tarea.tipo.etiqueta}'
+                            ' · ${item.curso.nombre}',
+                            style: textos.titleSmall,
+                          ),
+                          Text(_cuando(item)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, _AnteChoque.cambiarHora),
+          child: const Text('Cambiar hora'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _AnteChoque.guardarIgual),
+          child: const Text('Guardar igual'),
+        ),
+      ],
+    );
+  }
+
+  /// "4:00 p. m. – 6:00 p. m." para un evento, "Vence 4:00 p. m." para un
+  /// plazo.
+  static String _cuando(TareaConCurso item) {
+    final horario = horarioDe(item);
+    final dia = DateFormat("EEEE d 'de' MMMM").format(horario.inicio);
+    return horario.tipo.esPlazo
+        ? '$dia · vence ${textoHora(horario.inicio)}'
+        : '$dia · ${textoLapso(horario.inicio, finDe(horario))}';
   }
 }
 

@@ -102,12 +102,68 @@ Deno.test("normaliza una respuesta correcta sin cambiarla", () => {
     titulo: "Laboratorio",
     fecha: "2026-10-06",
     hora: "16:00",
+    horaFin: null,
     peso: 20,
   });
 });
 
+Deno.test("conserva la hora de fin de un evento", () => {
+  const r = normalizarResultado(
+    { tipo: "examen", hora: "16:00", horaFin: "17:30" },
+    base,
+  );
+  assertEquals(r.horaFin, "17:30");
+});
+
+Deno.test("una reunión es un evento: conserva su hora de fin", () => {
+  const r = normalizarResultado(
+    { tipo: "reunion", hora: "17:00", horaFin: "18:00" },
+    base,
+  );
+  assertEquals(r.tipo, "reunion");
+  assertEquals(r.horaFin, "18:00");
+});
+
+Deno.test("«proyecto» ya no es un tipo: queda como otro", () => {
+  // La IA no debería responderlo (no está en el esquema), pero si lo hace no
+  // llega a la app un tipo que no existe.
+  const r = normalizarResultado({ tipo: "proyecto" }, base);
+  assertEquals(r.tipo, "otro");
+});
+
+Deno.test("descarta la hora de fin de una entrega", () => {
+  for (const tipo of ["entrega"]) {
+    const r = normalizarResultado(
+      { tipo, hora: "16:00", horaFin: "17:00" },
+      base,
+    );
+    assertEquals(r.horaFin, null);
+  }
+});
+
+Deno.test("descarta una hora de fin sin inicio o que no es posterior", () => {
+  const sinInicio = normalizarResultado(
+    { tipo: "examen", horaFin: "17:00" },
+    base,
+  );
+  const antes = normalizarResultado(
+    { tipo: "examen", hora: "16:00", horaFin: "15:00" },
+    base,
+  );
+  const igual = normalizarResultado(
+    { tipo: "examen", hora: "16:00", horaFin: "16:00" },
+    base,
+  );
+  assertEquals(sinInicio.horaFin, null);
+  assertEquals(antes.horaFin, null);
+  assertEquals(igual.horaFin, null);
+});
+
 Deno.test("usa el nombre exacto del curso aunque cambien tildes o mayúsculas", () => {
-  const r = normalizarResultado({ tipo: "examen", materia: "calculo ii" }, base);
+  const r = normalizarResultado(
+    { tipo: "examen", materia: "calculo ii" },
+    base,
+  );
   assertEquals(r.materia, "Cálculo II");
 });
 
@@ -135,9 +191,18 @@ Deno.test("descarta valores mal formados en vez de pasarlos a la app", () => {
 });
 
 Deno.test("completa la hora con cero y acepta el peso como texto", () => {
-  const r = normalizarResultado({ tipo: "examen", hora: "8:30", peso: "12.5" }, base);
+  const r = normalizarResultado(
+    { tipo: "examen", hora: "8:30", peso: "12.5" },
+    base,
+  );
   assertEquals(r.hora, "08:30");
   assertEquals(r.peso, 12.5);
+  // La hora de fin también se completa con cero.
+  const fin = normalizarResultado(
+    { tipo: "examen", hora: "8:00", horaFin: "9:30" },
+    base,
+  );
+  assertEquals(fin.horaFin, "09:30");
 });
 
 Deno.test("si falta la transcripción, usa el texto enviado", () => {
