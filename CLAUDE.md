@@ -8,7 +8,7 @@ equipo debe entender el código para presentarlo en clase.
 
 ## Qué hace la app
 
-El estudiante mantiene presionado un botón y dice una frase natural
+El estudiante toca el micrófono (como un audio de WhatsApp) y dice una frase natural
 («tengo que entregar el laboratorio de física el martes a las 4 de la tarde y vale el 20%
 de la nota parcial»). En segundos la app devuelve una tarjeta ya estructurada con curso,
 tipo de actividad, fecha, hora y peso en la nota, lista para confirmar o corregir.
@@ -64,13 +64,19 @@ estos paquetes cambian entre versiones.
 
 ```json
 { "transcripcion": "...", "materia": "Física", "tipo": "entrega",
-  "titulo": "Laboratorio 3", "fecha": "2026-10-06", "hora": "16:00", "peso": 20 }
+  "titulo": "Laboratorio 3", "fecha": "2026-10-06", "hora": "16:00",
+  "horaFin": null, "peso": 20 }
 ```
 
-- `tipo` es uno de: `entrega`, `examen`, `proyecto`, `exposicion`, `otro`.
+- `tipo` es uno de: `entrega`, `examen`, `exposicion`, `reunion`, `otro`. (Hasta la
+  fase 5 existía `proyecto`; se quitó: un proyecto es una entrega con título.)
 - `fecha` en `YYYY-MM-DD`, `hora` en `HH:mm` de 24 horas, `peso` es un número (porcentaje).
 - `titulo` es un nombre corto opcional de la actividad (máx. 80 caracteres), para
   distinguir tareas del mismo curso y tipo. Agregado en la fase 2.
+- `horaFin` (`HH:mm`) es la hora en que termina, solo para eventos (todo menos
+  entrega): "de 4 a 5" → `hora` 16:00, `horaFin` 17:00. Siempre `null` en entrega, o si
+  no es posterior a `hora`. La app calcula la duración con las dos horas.
+  Agregado en la fase 5.
 - Todo dato no mencionado llega como `null`. `transcripcion` y `tipo` siempre vienen.
 - La app **envía** a la función: audio en base64 (WAV, 16 kHz, mono), `mimeType`, la fecha
   de hoy con zona horaria de Lima, y la lista de nombres de cursos del estudiante (la IA
@@ -108,12 +114,35 @@ Implementación (fase 3), en `supabase/functions/extraer-tarea/`:
 peso antes de guardar. No se puede confirmar sin curso, tipo, fecha y hora. Si la materia
 dictada no coincide con ningún curso existente, ofrecer crearlo.
 
-**Duración por defecto** (para detectar conflictos): examen 2 horas; entrega y los demás
-tipos, 1 hora.
+**Plazos y eventos** (definido en la fase 5):
 
-**Conflicto.** Dos actividades chocan si `iniA < finB && iniB < finA`. Si hay choque,
-mostrar la tarea en conflicto con dos opciones: «Guardar igual» o «Cambiar hora». Esta
-lógica va en una **función Dart pura con pruebas unitarias**.
+- **Plazo**: entrega (incluye proyectos, informes, avances de tesis…; el título dice
+  cuál). Es una fecha y hora límite, sin duración (`duracionMinutos` = 0).
+- **Eventos**: examen (2 h por defecto), exposición, reunión y otro (1 h por defecto).
+  «Otro» es para congresos, charlas, talleres, visitas de campo, clases de
+  recuperación. La tarjeta tiene el campo «Termina» para cambiar la duración, y la IA
+  la llena con `horaFin`.
+
+**Conflicto** (`lib/features/tasks/conflictos.dart`, **función Dart pura con pruebas
+unitarias**):
+
+- **Una entrega nunca choca** con nada (ni al guardarla ni con eventos nuevos).
+- Evento con evento: chocan si `iniA < finB && iniB < finA` (pegados no chocan).
+- No cuentan las tareas completadas ni la propia tarea al editarla. Al editar, solo se
+  revisa si cambió la fecha, la hora, la duración o el tipo.
+- Si hay choque, se listan las tareas en conflicto con dos opciones: «Guardar igual» o
+  «Cambiar hora» (vuelve a la tarjeta con el selector de hora abierto).
+
+**Lista de pendientes** (`tasks_screen.dart`, `filtro_tareas.dart`):
+
+- Empieza en **Pendientes**; el botón recorre Pendientes → Completadas → Pasadas → Todas.
+- Una tarea «pasa» (`finDeTarea`) a su hora límite si es entrega, o cuando **termina**
+  si es evento (un examen de 4 a 6 sigue pendiente hasta las 6). Pendientes = sin
+  completar y sin pasar; Pasadas = las que pasaron, completadas o no.
+- Tarjeta: arriba, en negrita, «Título · Curso» (o «Tipo · Curso»), máximo 2 líneas con
+  «…»; abajo, tipo (si hay título), hora o lapso y peso.
+- Al marcar o desmarcar una tarea que deja de encajar en el filtro, sale con animación
+  (pausa breve con el check, luego se desvanece y encoge) y aparece «Deshacer».
 
 **Recordatorios según el peso:**
 
@@ -174,8 +203,9 @@ Tablas de Drift:
 - `Courses` tiene además `orden` (posición elegida por el usuario al arrastrar).
 - `Dictados` (clase `Dictado`): id, rutaAudio, grabadoEn, estado (`esperando`, `listo`,
   `fallido`), resultado (JSON de la IA), mensaje. Es la cola de dictados por voz.
-- Esquema actual: **versión 4** (2 agregó `titulo`, 3 agregó `orden`, 4 agregó
-  `Dictados`). Ver historial en `database.dart`. Cada migración nueva lleva su prueba en
+- Esquema actual: **versión 5** (2 agregó `titulo`, 3 agregó `orden`, 4 agregó
+  `Dictados`, 5 convirtió las tareas `proyecto` en `entrega` y dejó las entregas con
+  duración 0). Ver historial en `database.dart`. Cada migración nueva lleva su prueba en
   `test/data/`.
 
 Notas de implementación (fase 2):
@@ -189,6 +219,12 @@ Notas de implementación (fase 2):
 
 Notas de implementación (fase 4, voz):
 
+- **Grabación al estilo WhatsApp**: se toca el micrófono una vez (no se mantiene
+  presionado). El botón se convierte en un panel con «0:07 / 0:30», la onda de voz
+  (volumen de `Grabadora.nivel()` cada 100 ms) y Descartar, Pausar/Continuar y Enviar.
+  Las pausas no cuentan en el tiempo. A los 30 s se pausa sola y solo deja enviar o
+  descartar. Si la app pasa a segundo plano, se pausa. `grabadoraProvider` se reemplaza
+  en las pruebas por `GrabadoraFalsa` (`test/ayudantes.dart`).
 - **Todo dictado pasa por la cola**, haya internet o no: se graba (WAV 16 kHz mono, entre
   1 y 30 s) en `<documentos de la app>/dictados/`, se guarda en `Dictados` como
   `esperando` y luego `ProcesadorDictados.procesar` lo envía a la función. Así nunca se
@@ -235,7 +271,7 @@ Notas de implementación (fase 4, voz):
    pendientes. Esta fase ya da una app útil sin internet.
 3. **Edge Function `extraer-tarea`** con Gemini y salida JSON estructurada; probarla con
    texto antes de usar audio.
-4. **Voz en Flutter**: permisos, grabación manteniendo presionado el botón, llamada a la
+4. **Voz en Flutter**: permisos, grabación con un toque (estilo WhatsApp), llamada a la
    función, tarjeta editable, modo sin conexión (cola de dictados y «Por revisar»).
 5. **Detección de conflictos** con pruebas unitarias.
 6. **Recordatorios locales.**

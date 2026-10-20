@@ -30,12 +30,14 @@ $casos = @(
     @{ Frase = 'examen parcial de cálculo el viernes a las 8, vale 30 por ciento'; Esperado = 'examen, Cálculo II, próximo viernes, 08:00, 30' }
     @{ Frase = 'exposición de historia pasado mañana a las 10 de la mañana'; Esperado = 'exposicion, Historia (no está en la lista), +2 días, 10:00' }
     @{ Frase = 'informe 2 de química para mañana a las 11 de la noche'; Esperado = 'entrega, Química General, mañana, 23:00, título "Informe 2"' }
-    @{ Frase = 'proyecto final de programación el 15 a las 6 de la tarde, vale 4 puntos'; Esperado = 'proyecto, Programación, día 15, 18:00, 20' }
+    @{ Frase = 'proyecto final de programación el 15 a las 6 de la tarde, vale 4 puntos'; Esperado = 'entrega, Programación, día 15, 18:00, 20, título "Proyecto final"' }
     @{ Frase = 'práctica calificada de física el lunes de la próxima semana a las 2'; Esperado = 'examen, Física I, lunes de la otra semana, 14:00' }
     @{ Frase = 'entregar el ensayo de filosofía el miércoles'; Esperado = 'entrega, Filosofía, próximo miércoles, hora null' }
     @{ Frase = 'tengo examen de arte'; Esperado = 'examen, Arte, fecha y hora null' }
-    @{ Frase = 'reunión con el grupo de trabajo el jueves a las 5'; Esperado = 'otro, sin curso, próximo jueves, 17:00' }
+    @{ Frase = 'reunión con el grupo de trabajo el jueves a las 5'; Esperado = 'reunion, sin curso, próximo jueves, 17:00' }
     @{ Frase = 'hola cómo estás'; Esperado = 'otro, casi todo null' }
+    @{ Frase = 'examen de física de 4 hasta las 5 el lunes'; Esperado = 'examen, Física I, próximo lunes, 16:00 a 17:00' }
+    @{ Frase = 'exposición de química de 3 horas el jueves a las 9 de la mañana'; Esperado = 'exposicion, Química General, próximo jueves, 09:00 a 12:00' }
 )
 
 Write-Host "Hoy en Lima: $hoy ($($lima.ToString('dddd', [Globalization.CultureInfo]'es-PE')))"
@@ -55,6 +57,7 @@ $resultados = foreach ($caso in $casos) {
             Titulo   = $r.titulo
             Fecha    = $r.fecha
             Hora     = $r.hora
+            HoraFin  = $r.horaFin
             Peso     = $r.peso
             Esperado = $caso.Esperado
         }

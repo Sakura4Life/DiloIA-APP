@@ -20,25 +20,43 @@ int hora12De(TimeOfDay hora) => hora.hourOfPeriod == 0 ? 12 : hora.hourOfPeriod;
 /// teléfono. Devuelve `null` si el usuario cancela.
 ///
 /// Si se pasa [fecha], el subtítulo dice cuánto falta para la tarea.
+///
+/// Si se pasa [empiezaA], sirve para elegir la hora en que termina un
+/// evento: el subtítulo dice cuánto dura, y no deja aceptar una hora que no
+/// sea posterior a [empiezaA].
 Future<TimeOfDay?> mostrarSelectorHora(
   BuildContext context, {
   required TimeOfDay inicial,
   DateTime? fecha,
+  TimeOfDay? empiezaA,
+  String titulo = 'Elegir hora',
 }) {
   return showModalBottomSheet<TimeOfDay>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _SelectorHora(inicial: inicial, fecha: fecha),
+    builder: (_) => _SelectorHora(
+      inicial: inicial,
+      fecha: fecha,
+      empiezaA: empiezaA,
+      titulo: titulo,
+    ),
   );
 }
 
 class _SelectorHora extends StatefulWidget {
-  const _SelectorHora({required this.inicial, required this.fecha});
+  const _SelectorHora({
+    required this.inicial,
+    required this.fecha,
+    required this.empiezaA,
+    required this.titulo,
+  });
 
   final TimeOfDay inicial;
   final DateTime? fecha;
+  final TimeOfDay? empiezaA;
+  final String titulo;
 
   @override
   State<_SelectorHora> createState() => _SelectorHoraState();
@@ -63,7 +81,21 @@ class _SelectorHoraState extends State<_SelectorHora> {
     // una hora que ya pasó; en ese caso se avisa en rojo.
     String? subtitulo;
     var yaPaso = false;
-    if (fecha != null) {
+    final empiezaA = widget.empiezaA;
+    if (empiezaA != null) {
+      // Hora de fin: dice cuánto dura el evento ("Dura 1 h 30 min").
+      final minutos =
+          (_elegida.hour * 60 + _elegida.minute) -
+          (empiezaA.hour * 60 + empiezaA.minute);
+      if (minutos > 0) {
+        subtitulo = 'Dura ${textoDuracion(Duration(minutes: minutos))}';
+      } else {
+        subtitulo =
+            'Debe terminar después de las '
+            '${textoHora(DateTime(2000, 1, 1, empiezaA.hour, empiezaA.minute))}';
+        yaPaso = true;
+      }
+    } else if (fecha != null) {
       final momento = DateTime(
         fecha.year,
         fecha.month,
@@ -94,7 +126,7 @@ class _SelectorHoraState extends State<_SelectorHora> {
               Expanded(
                 child: Column(
                   children: [
-                    Text('Elegir hora', style: textos.titleLarge),
+                    Text(widget.titulo, style: textos.titleLarge),
                     if (subtitulo != null)
                       Text(
                         subtitulo,
@@ -111,7 +143,10 @@ class _SelectorHoraState extends State<_SelectorHora> {
                 tooltip: 'Aceptar',
                 iconSize: 28,
                 icon: const Icon(Icons.check),
-                onPressed: () => Navigator.pop(context, _elegida),
+                // Una hora de fin anterior al inicio no se puede aceptar.
+                onPressed: empiezaA != null && yaPaso
+                    ? null
+                    : () => Navigator.pop(context, _elegida),
               ),
             ],
           ),

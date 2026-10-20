@@ -76,7 +76,8 @@ Deno.test("si el 429 persiste, avisa que la IA está ocupada", async () => {
     new Response("", { status: 429 }),
   ]);
   const error = await assertRejects(
-    () => llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
+    () =>
+      llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
     ErrorGemini,
   );
   assertEquals(error.codigo, "ia_ocupada");
@@ -124,7 +125,8 @@ Deno.test("si la conexión sigue fallando, se rinde con un mensaje claro", async
   }) as unknown as typeof fetch;
 
   const error = await assertRejects(
-    () => llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
+    () =>
+      llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
     ErrorGemini,
   );
   assertEquals(error.codigo, "ia_no_disponible");
@@ -134,7 +136,8 @@ Deno.test("si la conexión sigue fallando, se rinde con un mensaje claro", async
 Deno.test("un error 400 no se reintenta", async () => {
   const { f, llamadas } = fetchFalso([new Response("mal", { status: 400 })]);
   const error = await assertRejects(
-    () => llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
+    () =>
+      llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
     ErrorGemini,
   );
   assertEquals(error.codigo, "ia_no_disponible");
@@ -150,7 +153,8 @@ Deno.test("una respuesta que no es JSON se reporta como inválida", async () => 
     ),
   ]);
   const error = await assertRejects(
-    () => llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
+    () =>
+      llamarGemini(peticion, { apiKey: "k", fetch: f, esperar: sinEsperar }),
     ErrorGemini,
   );
   assertEquals(error.codigo, "respuesta_invalida");

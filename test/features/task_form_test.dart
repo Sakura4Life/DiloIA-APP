@@ -5,7 +5,7 @@ import 'package:diloia_app/data/dictados_repository.dart';
 import 'package:diloia_app/data/providers.dart';
 import 'package:diloia_app/features/tasks/task_draft.dart';
 import 'package:diloia_app/features/tasks/task_form_screen.dart';
-import 'package:drift/drift.dart' show DatabaseConnection;
+import 'package:drift/drift.dart' show DatabaseConnection, Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -116,6 +116,7 @@ void main() {
       WidgetTester tester, {
       BorradorTarea? borrador,
       DesdeDictado? dictado,
+      Task? existente,
     }) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -134,8 +135,11 @@ void main() {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) =>
-                        TaskFormScreen(borrador: borrador, dictado: dictado),
+                    builder: (_) => TaskFormScreen(
+                      borrador: borrador,
+                      dictado: dictado,
+                      existente: existente,
+                    ),
                   ),
                 ),
                 child: const Text('Inicio'),
@@ -374,6 +378,204 @@ void main() {
         final cursos = await db.select(db.courses).get();
         expect(cursos.map((c) => c.nombre), contains('Historia'));
         expect(find.textContaining('no existe'), findsNothing);
+        await cerrar(tester);
+      });
+    });
+
+    group('duración', () {
+      DateTime enCincoDias() {
+        final dia = DateTime.now().add(const Duration(days: 5));
+        return DateTime(dia.year, dia.month, dia.day);
+      }
+
+      testWidgets('un examen muestra a qué hora termina', (tester) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(
+            tipo: TipoActividad.examen,
+            fecha: enCincoDias(),
+            hora: const TimeOfDay(hour: 16, minute: 0),
+          ),
+        );
+
+        expect(find.text('Termina'), findsOneWidget);
+        final seis = textoHora(DateTime(2000, 1, 1, 18));
+        expect(find.text('$seis · dura 2 h'), findsOneWidget);
+        await cerrar(tester);
+      });
+
+      testWidgets('una entrega no tiene campo de duración', (tester) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(tipo: TipoActividad.entrega),
+        );
+
+        expect(find.text('Termina'), findsNothing);
+        await cerrar(tester);
+      });
+
+      testWidgets('elegir la hora de fin cambia la duración guardada', (
+        tester,
+      ) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(
+            courseId: curso,
+            tipo: TipoActividad.examen,
+            fecha: enCincoDias(),
+            hora: const TimeOfDay(hour: 16, minute: 0),
+            // Como si la IA hubiera entendido "de 4 a 5".
+            duracion: const Duration(hours: 1),
+          ),
+        );
+        await tester.tap(find.text('Termina'));
+        await tester.pumpAndSettle();
+        expect(find.text('¿A qué hora termina?'), findsOneWidget);
+        expect(find.text('Dura 1 h'), findsOneWidget);
+
+        // Acepta la hora que ya tiene (5:00 p. m.) y guarda.
+        await tester.tap(find.byTooltip('Aceptar'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect((await db.select(db.tasks).get()).single.duracionMinutos, 60);
+        await cerrar(tester);
+      });
+    });
+
+    group('choques de horario', () {
+      late DateTime dia;
+
+      setUp(() async {
+        final enCinco = DateTime.now().add(const Duration(days: 5));
+        dia = DateTime(enCinco.year, enCinco.month, enCinco.day);
+        // Ya hay un examen de 4 a 6 p. m.
+        await db
+            .into(db.tasks)
+            .insert(
+              TasksCompanion.insert(
+                courseId: curso,
+                tipo: TipoActividad.examen,
+                titulo: const Value('Segundo parcial'),
+                inicio: dia.add(const Duration(hours: 16)),
+                duracionMinutos: 120,
+              ),
+            );
+      });
+
+      /// Una reunión (1 hora) a la hora indicada de ese mismo día.
+      BorradorTarea reunionA(int hora, [int minuto = 0]) => BorradorTarea(
+        courseId: curso,
+        tipo: TipoActividad.reunion,
+        fecha: dia,
+        hora: TimeOfDay(hour: hora, minute: minuto),
+      );
+
+      testWidgets('avisa antes de guardar y muestra con qué choca', (
+        tester,
+      ) async {
+        await abrir(tester, borrador: reunionA(16, 30));
+
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Choque de horario'), findsOneWidget);
+        expect(find.text('Segundo parcial · Física'), findsOneWidget);
+        expect(await db.select(db.tasks).get(), hasLength(1));
+        await cerrar(tester);
+      });
+
+      testWidgets('«Guardar igual» guarda la tarea', (tester) async {
+        await abrir(tester, borrador: reunionA(16, 30));
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Guardar igual'));
+        await tester.pumpAndSettle();
+
+        expect(await db.select(db.tasks).get(), hasLength(2));
+        expect(find.text('Inicio'), findsOneWidget);
+        await cerrar(tester);
+      });
+
+      testWidgets('«Cambiar hora» no guarda y abre el selector de hora', (
+        tester,
+      ) async {
+        await abrir(tester, borrador: reunionA(16, 30));
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Cambiar hora'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Elegir hora'), findsOneWidget);
+        expect(await db.select(db.tasks).get(), hasLength(1));
+        await cerrar(tester);
+      });
+
+      testWidgets('una entrega en pleno examen no avisa', (tester) async {
+        await abrir(
+          tester,
+          borrador: BorradorTarea(
+            courseId: curso,
+            tipo: TipoActividad.entrega,
+            fecha: dia,
+            hora: const TimeOfDay(hour: 16, minute: 30),
+          ),
+        );
+
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Choque de horario'), findsNothing);
+        expect(await db.select(db.tasks).get(), hasLength(2));
+        await cerrar(tester);
+      });
+
+      testWidgets('sin choque, guarda sin preguntar', (tester) async {
+        // A las 6:00 el examen ya terminó.
+        await abrir(tester, borrador: reunionA(18));
+
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Choque de horario'), findsNothing);
+        expect(await db.select(db.tasks).get(), hasLength(2));
+        await cerrar(tester);
+      });
+
+      testWidgets('al corregir solo el título no vuelve a avisar', (
+        tester,
+      ) async {
+        // Una reunión que ya chocaba y se guardó igual.
+        final id = await db
+            .into(db.tasks)
+            .insert(
+              TasksCompanion.insert(
+                courseId: curso,
+                tipo: TipoActividad.reunion,
+                inicio: dia.add(const Duration(hours: 16, minutes: 30)),
+                duracionMinutos: 60,
+              ),
+            );
+        final guardada = await (db.select(
+          db.tasks,
+        )..where((t) => t.id.equals(id))).getSingle();
+        await abrir(tester, existente: guardada);
+
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Título (opcional)'),
+          'Informe 2',
+        );
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Choque de horario'), findsNothing);
+        final editada = await (db.select(
+          db.tasks,
+        )..where((t) => t.id.equals(id))).getSingle();
+        expect(editada.titulo, 'Informe 2');
         await cerrar(tester);
       });
     });

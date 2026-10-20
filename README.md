@@ -15,6 +15,19 @@ Solo Android. Funciona sin internet (excepto el dictado por voz).
 - Comprobar el entorno: `flutter doctor` (los avisos de Chrome y Visual Studio se pueden
   ignorar: solo compilamos para Android).
 
+## Preparar el celular (solo la primera vez)
+
+1. **Activar las opciones de desarrollador**: *Ajustes → Acerca del teléfono* y toca 7
+   veces **Número de compilación** (en Xiaomi/Redmi: **Versión de MIUI/HyperOS**).
+2. En *Ajustes → Opciones de desarrollador* (en Xiaomi: *Ajustes adicionales → Opciones
+   de desarrollador*), activa **Depuración USB**.
+3. **Solo Xiaomi/Redmi/POCO**: activa también **Instalar vía USB** y **Depuración USB
+   (Ajustes de seguridad)**. Sin esto, la instalación falla con
+   `INSTALL_FAILED_USER_RESTRICTED`.
+4. Conecta el celular por USB, elige **Transferencia de archivos** si lo pregunta, y
+   acepta el mensaje **¿Permitir depuración USB?** que aparece en la pantalla.
+5. Comprueba que la computadora lo ve: `flutter devices` debe listar tu celular.
+
 ## Primeros pasos
 
 ```bash
@@ -33,6 +46,13 @@ flutter run
 
 Al abrir la carpeta en VS Code, acepta instalar las extensiones recomendadas (Dart y
 Flutter).
+
+**Para probar el dictado por voz** no hay que configurar nada: la app ya apunta a la
+Edge Function del proyecto (es la misma para todo el equipo). Solo necesitas internet
+en el celular. Si el dictado dice que el servicio de IA no está disponible, avisa al
+responsable del proyecto de Supabase: puede que esté pausado (ver
+[A tener en cuenta](#a-tener-en-cuenta)). Todo lo demás (cursos, tareas, choques de
+horario) funciona sin internet, y los datos quedan solo en tu celular.
 
 ### Cuándo volver a correr algo
 
@@ -94,7 +114,8 @@ El nuevo `android` CLI no entiende el id que le pasa Gradle. Instalarlo a mano
 
 ### Reglas
 
-- **Nunca** hacer push directo a `main`: GitHub lo bloquea, todo entra por Pull Request.
+- **Nunca** 
+hacer push directo a `main`: GitHub lo bloquea, todo entra por Pull Request.
 - Ramas pequeñas, un tema por rama. Si dos personas tocan el mismo archivo se generan
   conflictos; los archivos compartidos (`pubspec.yaml`, `lib/app.dart`,
   `AndroidManifest.xml`) conviene cambiarlos en ramas cortas.
@@ -126,7 +147,9 @@ Desinstala la app del celular (o `adb uninstall com.diloia.app`) y vuelve a corr
 
 ## Dictado por voz
 
-1. Se mantiene presionado el micrófono y se habla (entre 1 y 30 segundos).
+1. Se toca el micrófono una vez y se habla, como al grabar un audio de WhatsApp: no
+   hace falta mantenerlo presionado. El panel de grabación muestra el tiempo (máximo
+   30 s), la onda de voz y los botones Descartar, Pausar/Continuar y Enviar.
 2. El audio se guarda primero en el celular, en la **cola de dictados**. Desde ahí ya no
    se pierde, aunque no haya internet o la IA falle.
 3. Si hay internet, se envía a la Edge Function y se abre la **tarjeta** con lo que
@@ -138,8 +161,8 @@ y la clave *publishable* (pública) en `lib/core/supabase_config.dart`.
 
 ### Probar en el celular
 
-- **Primera vez**: al mantener presionado el micrófono, Android pide el permiso. Después
-  hay que volver a mantenerlo presionado para dictar.
+- **Primera vez**: al tocar el micrófono, Android pide el permiso; al aceptarlo empieza
+  a grabar.
 - **Sin internet**: pon el modo avión, dicta, quita el modo avión con la app abierta y
   revisa «Por revisar».
 - Si el permiso se negó dos veces, Android ya no pregunta: se activa en *Ajustes → Apps
@@ -198,7 +221,7 @@ npx supabase functions deploy extraer-tarea
 .\supabase\probar_extraer_tarea.ps1 -Proyecto <id-del-proyecto> -Clave <publishable-key>
 ```
 
-Manda 10 frases de ejemplo y muestra lo que entendió la IA junto a lo esperado.
+Manda 12 frases de ejemplo y muestra lo que entendió la IA junto a lo esperado.
 
 ### A tener en cuenta
 

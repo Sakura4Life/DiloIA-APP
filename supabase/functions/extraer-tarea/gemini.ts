@@ -43,7 +43,9 @@ export function cuerpoGemini(peticion: Peticion) {
     partes.push({
       inlineData: { mimeType: peticion.mimeType, data: peticion.audio },
     });
-    partes.push({ text: "Extrae los datos de la actividad dictada en el audio." });
+    partes.push({
+      text: "Extrae los datos de la actividad dictada en el audio.",
+    });
   } else {
     partes.push({ text: peticion.texto });
   }

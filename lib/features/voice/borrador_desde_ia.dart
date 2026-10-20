@@ -35,15 +35,22 @@ BorradorDeVoz borradorDesdeIA(
 
   final peso = resultado.peso;
   final titulo = resultado.titulo;
+  // Un dictado guardado en la cola antes de la versión 5 puede decir
+  // "proyecto", que ahora es una entrega.
+  final tipo = resultado.tipo == 'proyecto'
+      ? TipoActividad.entrega
+      : TipoActividad.values.asNameMap()[resultado.tipo] ?? TipoActividad.otro;
+  final hora = _leerHora(resultado.hora);
   return (
     borrador: BorradorTarea(
       courseId: curso?.id,
-      tipo:
-          TipoActividad.values.asNameMap()[resultado.tipo] ??
-          TipoActividad.otro,
+      tipo: tipo,
       titulo: titulo == null || titulo.length > 80 ? null : titulo,
       fecha: _fechaFutura(resultado.fecha, ahora),
-      hora: _leerHora(resultado.hora),
+      hora: hora,
+      duracion: tipo.esPlazo
+          ? null
+          : _duracion(hora, _leerHora(resultado.horaFin)),
       peso: peso != null && peso >= 0 && peso <= 100 ? peso : null,
     ),
     materiaNueva: curso == null ? materia : null,
@@ -60,6 +67,15 @@ DateTime? _fechaFutura(String? texto, DateTime ahora) {
   final dia = DateTime(fecha.year, fecha.month, fecha.day);
   final hoy = DateTime(ahora.year, ahora.month, ahora.day);
   return dia.isBefore(hoy) ? null : dia;
+}
+
+/// "de 4 a 5:30" → 1 h 30 min. `null` (se usará la duración del tipo) si
+/// falta alguna de las dos horas o si el fin no es posterior al inicio.
+Duration? _duracion(TimeOfDay? inicio, TimeOfDay? fin) {
+  if (inicio == null || fin == null) return null;
+  final minutos =
+      (fin.hour * 60 + fin.minute) - (inicio.hour * 60 + inicio.minute);
+  return minutos > 0 ? Duration(minutes: minutos) : null;
 }
 
 /// "16:30" → 4:30 p. m.

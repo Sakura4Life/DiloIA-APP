@@ -57,6 +57,19 @@ String? textoFaltante(DateTime momento, {required DateTime ahora}) {
 /// Hora en formato de 12 horas, como en un reloj: "4:00 p. m.".
 String textoHora(DateTime momento) => DateFormat('h:mm a').format(momento);
 
+/// "4:00 p. m. – 6:00 p. m.": de cuándo a cuándo es un evento.
+String textoLapso(DateTime inicio, DateTime fin) =>
+    '${textoHora(inicio)} – ${textoHora(fin)}';
+
+/// "2 h", "1 h 30 min" o "45 min".
+String textoDuracion(Duration duracion) {
+  final horas = duracion.inHours;
+  final minutos = duracion.inMinutes % 60;
+  if (horas == 0) return '$minutos min';
+  if (minutos == 0) return '$horas h';
+  return '$horas h $minutos min';
+}
+
 /// "20" o "12,5": sin decimales cuando el número es entero, y con coma
 /// decimal como se escribe en español.
 String numeroPeso(double peso) {

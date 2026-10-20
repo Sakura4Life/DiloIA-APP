@@ -31,27 +31,57 @@ void main() {
     List<Task> con(FiltroTareas filtro) =>
         todas.where((t) => filtro.incluye(t, ahora: ahora)).toList();
 
-    test('recorre los cuatro estados y vuelve a empezar', () {
-      var filtro = FiltroTareas.todas;
+    test('empieza en Pendientes, recorre los cuatro y vuelve a empezar', () {
+      var filtro = FiltroTareas.values.first;
       final recorrido = <String>[];
       for (var i = 0; i < 5; i++) {
         recorrido.add(filtro.etiqueta);
         filtro = filtro.siguiente;
       }
       expect(recorrido, [
-        'Todas',
         'Pendientes',
         'Completadas',
         'Pasadas',
         'Todas',
+        'Pendientes',
       ]);
     });
 
     test('cada filtro muestra lo que corresponde', () {
       expect(con(FiltroTareas.todas), todas);
-      expect(con(FiltroTareas.pendientes), [futuraPendiente, vencida]);
+      // Las vencidas sin marcar ya no salen en Pendientes.
+      expect(con(FiltroTareas.pendientes), [futuraPendiente]);
       expect(con(FiltroTareas.completadas), [futuraHecha, pasadaHecha]);
       expect(con(FiltroTareas.pasadas), [vencida, pasadaHecha]);
+    });
+
+    test('un evento en curso sigue pendiente hasta que termina', () {
+      // Examen de 9 a 11; son las 10.
+      final examen = Task(
+        id: 2,
+        courseId: 1,
+        tipo: TipoActividad.examen,
+        inicio: DateTime(2026, 10, 4, 9),
+        duracionMinutos: 120,
+        completada: false,
+      );
+      expect(FiltroTareas.pendientes.incluye(examen, ahora: ahora), isTrue);
+      expect(FiltroTareas.pasadas.incluye(examen, ahora: ahora), isFalse);
+
+      final alTerminar = DateTime(2026, 10, 4, 11);
+      expect(
+        FiltroTareas.pendientes.incluye(examen, ahora: alTerminar),
+        isFalse,
+      );
+      expect(FiltroTareas.pasadas.incluye(examen, ahora: alTerminar), isTrue);
+    });
+
+    test('una entrega pasa al llegar su hora límite', () {
+      final entrega = tarea(
+        completada: false,
+        inicio: DateTime(2026, 10, 4, 10),
+      );
+      expect(FiltroTareas.pasadas.incluye(entrega, ahora: ahora), isTrue);
     });
   });
 

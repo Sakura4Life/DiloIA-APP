@@ -71,7 +71,7 @@ void main() {
 
   test('datos con formato raro no rompen la tarjeta', () {
     final r = convertir({
-      'tipo': 'reunion', // no es un tipo válido
+      'tipo': 'cita', // no es un tipo válido
       'fecha': 'viernes',
       'hora': '25:00',
       'peso': 150,
@@ -80,6 +80,54 @@ void main() {
     expect(r.borrador.fecha, isNull);
     expect(r.borrador.hora, isNull);
     expect(r.borrador.peso, isNull);
+  });
+
+  test('un dictado viejo que dice "proyecto" se vuelve entrega', () {
+    expect(
+      convertir({'tipo': 'proyecto'}).borrador.tipo,
+      TipoActividad.entrega,
+    );
+  });
+
+  test('reconoce el tipo reunión', () {
+    expect(convertir({'tipo': 'reunion'}).borrador.tipo, TipoActividad.reunion);
+  });
+
+  group('hora de fin', () {
+    test('"de 4 hasta las 5" deja un examen de 1 hora', () {
+      final r = convertir({
+        'tipo': 'examen',
+        'hora': '16:00',
+        'horaFin': '17:00',
+      });
+      expect(r.borrador.duracion, const Duration(hours: 1));
+      expect(r.borrador.duracionFinal, const Duration(hours: 1));
+    });
+
+    test('sin hora de fin, usa la duración del tipo', () {
+      final r = convertir({'tipo': 'examen', 'hora': '16:00'});
+      expect(r.borrador.duracion, isNull);
+      expect(r.borrador.duracionFinal, const Duration(hours: 2));
+    });
+
+    test('en un plazo se ignora la hora de fin', () {
+      final r = convertir({
+        'tipo': 'entrega',
+        'hora': '16:00',
+        'horaFin': '17:00',
+      });
+      expect(r.borrador.duracion, isNull);
+      expect(r.borrador.duracionFinal, Duration.zero);
+    });
+
+    test('una hora de fin anterior al inicio se ignora', () {
+      final r = convertir({
+        'tipo': 'exposicion',
+        'hora': '16:00',
+        'horaFin': '15:00',
+      });
+      expect(r.borrador.duracionFinal, const Duration(hours: 1));
+    });
   });
 
   group('fechaEnLima', () {

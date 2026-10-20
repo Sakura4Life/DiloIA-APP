@@ -20,13 +20,13 @@ class TasksScreen extends ConsumerStatefulWidget {
 }
 
 class _TasksScreenState extends ConsumerState<TasksScreen> {
-  FiltroTareas _filtro = FiltroTareas.todas;
+  FiltroTareas _filtro = FiltroTareas.pendientes;
 
-  /// Tareas cuya casilla se marcó o desmarcó con el filtro actual. Siguen
-  /// visibles aunque ya no encajen en el filtro (por ejemplo, una tarea recién
-  /// completada en "Pendientes"), para que no salten fuera de la lista
-  /// mientras el usuario la toca. Se limpia al cambiar de filtro.
-  final _recienMarcadas = <int>{};
+  /// Tareas que se acaban de marcar o desmarcar y ya no encajan en el filtro
+  /// (por ejemplo, una tarea completada en "Pendientes"). Siguen en pantalla
+  /// mientras dura su animación de salida; al terminar, se quitan de aquí y
+  /// el filtro las oculta.
+  final _saliendo = <int>{};
 
   /// Tareas que el usuario acaba de borrar deslizando. Se ocultan al instante,
   /// sin esperar a que la base de datos confirme el borrado: Flutter exige que
@@ -80,17 +80,40 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       );
   }
 
-  void _marcar(Task tarea, {required bool completada}) {
-    setState(() => _recienMarcadas.add(tarea.id));
-    ref
-        .read(tasksRepositoryProvider)
-        .marcarCompletada(tarea.id, completada: completada);
+  Future<void> _marcar(Task tarea, {required bool completada}) async {
+    final repo = ref.read(tasksRepositoryProvider);
+    // ¿Sigue encajando en el filtro después del cambio? En "Todas" sí (solo
+    // se tacha); en "Pendientes", una tarea completada ya no.
+    final sigue = _filtro.incluye(
+      tarea.copyWith(completada: completada),
+      ahora: DateTime.now(),
+    );
+    if (!sigue) setState(() => _saliendo.add(tarea.id));
+    await repo.marcarCompletada(tarea.id, completada: completada);
+    if (sigue || !mounted) return;
+
+    // La tarea se va de la lista: por si fue un toque equivocado, se puede
+    // deshacer, igual que al borrar.
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            completada ? 'Tarea completada' : 'Tarea marcada como pendiente',
+          ),
+          action: SnackBarAction(
+            label: 'Deshacer',
+            onPressed: () =>
+                repo.marcarCompletada(tarea.id, completada: !completada),
+          ),
+        ),
+      );
   }
 
   void _cambiarFiltro() {
     setState(() {
       _filtro = _filtro.siguiente;
-      _recienMarcadas.clear();
+      _saliendo.clear();
     });
   }
 
@@ -115,7 +138,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 ),
               ),
               // Cada toque pasa al siguiente filtro:
-              // Todas → Pendientes → Completadas → Pasadas → Todas…
+              // Pendientes → Completadas → Pasadas → Todas → Pendientes…
               ActionChip(
                 avatar: Icon(_filtro.icono, size: 18),
                 label: Text(_filtro.etiqueta),
@@ -136,7 +159,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 for (final item in todas)
                   if (!_borrandose.contains(item.tarea.id) &&
                       (_filtro.incluye(item.tarea, ahora: ahora) ||
-                          _recienMarcadas.contains(item.tarea.id)))
+                          _saliendo.contains(item.tarea.id)))
                     item,
               ];
               if (visibles.isEmpty) {
@@ -144,17 +167,18 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                   icono: Icons.task_alt,
                   titulo: _filtro.mensajeVacio,
                   mensaje: todas.isEmpty
-                      ? 'Mantén presionado el micrófono y dicta tu primera '
-                            'tarea.\n'
+                      ? 'Toca el micrófono y dicta tu primera tarea.\n'
                             'Por ejemplo: «examen de física a las 8, vale 30%».'
                       : 'Toca «${_filtro.etiqueta}» para ver otras tareas.',
                 );
               }
               return _ListaAgrupada(
                 tareas: visibles,
+                saliendo: _saliendo,
                 confirmarBorrado: _confirmarBorrado,
                 onBorrar: _borrar,
                 onMarcar: _marcar,
+                onSalio: (id) => setState(() => _saliendo.remove(id)),
               );
             },
           ),
@@ -169,15 +193,21 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 class _ListaAgrupada extends StatelessWidget {
   const _ListaAgrupada({
     required this.tareas,
+    required this.saliendo,
     required this.confirmarBorrado,
     required this.onBorrar,
     required this.onMarcar,
+    required this.onSalio,
   });
 
   final List<TareaConCurso> tareas;
+
+  /// Ids de las tareas que están haciendo su animación de salida.
+  final Set<int> saliendo;
   final Future<bool> Function(TareaConCurso) confirmarBorrado;
   final void Function(Task) onBorrar;
   final void Function(Task, {required bool completada}) onMarcar;
+  final ValueChanged<int> onSalio;
 
   @override
   Widget build(BuildContext context) {
@@ -191,13 +221,21 @@ class _ListaAgrupada extends StatelessWidget {
         filas.add(_TituloDia(dia));
         diaAnterior = dia;
       }
+      final id = item.tarea.id;
       filas.add(
-        _FilaTarea(
-          item: item,
-          ahora: ahora,
-          confirmarBorrado: () => confirmarBorrado(item),
-          onBorrar: () => onBorrar(item.tarea),
-          onMarcar: (valor) => onMarcar(item.tarea, completada: valor),
+        // La clave mantiene la animación pegada a su tarea aunque la lista
+        // cambie mientras tanto.
+        _Saliente(
+          key: ValueKey('saliente-$id'),
+          activo: saliendo.contains(id),
+          onTerminado: () => onSalio(id),
+          child: _FilaTarea(
+            item: item,
+            ahora: ahora,
+            confirmarBorrado: () => confirmarBorrado(item),
+            onBorrar: () => onBorrar(item.tarea),
+            onMarcar: (valor) => onMarcar(item.tarea, completada: valor),
+          ),
         ),
       );
     }
@@ -206,6 +244,74 @@ class _ListaAgrupada extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 104),
       children: filas,
+    );
+  }
+}
+
+/// Animación de una tarea que se va de la lista: primero se queda quieta un
+/// instante (para que se vea el check y el tachado) y luego se desvanece y se
+/// encoge, y las de abajo suben.
+class _Saliente extends StatefulWidget {
+  const _Saliente({
+    super.key,
+    required this.activo,
+    required this.onTerminado,
+    required this.child,
+  });
+
+  final bool activo;
+  final VoidCallback onTerminado;
+  final Widget child;
+
+  @override
+  State<_Saliente> createState() => _SalienteState();
+}
+
+class _SalienteState extends State<_Saliente>
+    with SingleTickerProviderStateMixin {
+  late final _controlador =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 650),
+      )..addStatusListener((estado) {
+        if (estado == AnimationStatus.completed) widget.onTerminado();
+      });
+
+  /// Va de 1 (se ve completa) a 0 (desapareció). El primer 45 % del tiempo
+  /// no cambia: es la pausa para ver el check.
+  late final _visible = ReverseAnimation(
+    CurvedAnimation(
+      parent: _controlador,
+      curve: const Interval(0.45, 1, curve: Curves.easeInOut),
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.activo) _controlador.forward();
+  }
+
+  @override
+  void didUpdateWidget(_Saliente anterior) {
+    super.didUpdateWidget(anterior);
+    if (widget.activo && !anterior.activo) _controlador.forward(from: 0);
+    if (!widget.activo && anterior.activo) _controlador.reset();
+  }
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: _visible,
+      // Se encoge hacia arriba: las tareas de abajo suben a ocupar su lugar.
+      alignment: Alignment.topCenter,
+      child: FadeTransition(opacity: _visible, child: widget.child),
     );
   }
 }
@@ -253,14 +359,21 @@ class _FilaTarea extends StatelessWidget {
     final textos = Theme.of(context).textTheme;
     final peso = tarea.pesoPorcentaje;
     final titulo = tarea.titulo;
-    final vencida = !tarea.completada && tarea.inicio.isBefore(ahora);
-    final tipoYCurso = '${tarea.tipo.etiqueta} · ${curso.nombre}';
+    final vencida = !tarea.completada && yaPaso(tarea, ahora: ahora);
 
-    // Con título: "Laboratorio 3" arriba y "Entrega · Física · 4:00 p. m."
-    // abajo. Sin título: "Entrega · Física" arriba y "4:00 p. m." abajo.
+    // Un evento muestra de cuándo a cuándo ("4:00 p. m. – 6:00 p. m."); una
+    // entrega, solo la hora límite.
+    final cuando = tarea.tipo.esPlazo
+        ? textoHora(tarea.inicio)
+        : textoLapso(tarea.inicio, finDeTarea(tarea));
+
+    // Arriba, en negrita: "Laboratorio 3 · Física" (o "Entrega · Física" si
+    // no hay título), para reconocer el curso de un vistazo.
+    // Abajo: "Entrega · 4:00 p. m. · 20% de la nota" (el tipo solo si hay
+    // título, porque si no ya está arriba).
     final detalles = [
-      if (titulo != null) tipoYCurso,
-      textoHora(tarea.inicio),
+      if (titulo != null) tarea.tipo.etiqueta,
+      cuando,
       if (peso != null) '${textoPeso(peso)} de la nota',
     ].join(' · ');
 
@@ -311,9 +424,15 @@ class _FilaTarea extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Un solo párrafo: si no cabe en una línea, baja a la
+                      // segunda; si tampoco, se corta con "…" al final, que
+                      // siempre cae en el nombre del curso.
                       Text(
-                        titulo ?? tipoYCurso,
+                        '${titulo ?? tarea.tipo.etiqueta} · ${curso.nombre}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: textos.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
                           decoration: tarea.completada
                               ? TextDecoration.lineThrough
                               : null,

@@ -2,14 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 
-/// Qué tareas muestra la lista. Se cambia tocando el botón de filtro, que
-/// recorre los estados en este orden y vuelve a empezar:
-/// Todas → Pendientes → Completadas → Pasadas → Todas…
+/// Momento en que una tarea "pasa": la hora límite de una entrega, o la hora
+/// en que termina un evento (un examen de 4 a 6 sigue pendiente hasta las 6).
+DateTime finDeTarea(Task tarea) => tarea.tipo.esPlazo
+    ? tarea.inicio
+    : tarea.inicio.add(Duration(minutes: tarea.duracionMinutos));
+
+/// Si la tarea ya pasó (ver [finDeTarea]).
+bool yaPaso(Task tarea, {required DateTime ahora}) =>
+    !finDeTarea(tarea).isAfter(ahora);
+
+/// Qué tareas muestra la lista. La app empieza en "Pendientes" y el botón de
+/// filtro recorre los estados en este orden y vuelve a empezar:
+/// Pendientes → Completadas → Pasadas → Todas → Pendientes…
 enum FiltroTareas {
-  todas('Todas', Icons.list_alt, 'Sin tareas'),
   pendientes('Pendientes', Icons.radio_button_unchecked, 'Sin pendientes'),
   completadas('Completadas', Icons.check, 'Sin tareas completadas'),
-  pasadas('Pasadas', Icons.history, 'Sin tareas pasadas');
+  pasadas('Pasadas', Icons.history, 'Sin tareas pasadas'),
+  todas('Todas', Icons.list_alt, 'Sin tareas');
 
   const FiltroTareas(this.etiqueta, this.icono, this.mensajeVacio);
 
@@ -24,12 +34,13 @@ enum FiltroTareas {
 
   /// Si [tarea] se muestra con este filtro.
   ///
-  /// - Pendientes: las no completadas, incluidas las vencidas.
-  /// - Pasadas: las que ya pasaron de fecha, completadas o no.
+  /// - Pendientes: sin completar y que todavía no pasan.
+  /// - Completadas: las marcadas, de cualquier fecha.
+  /// - Pasadas: las que ya pasaron, completadas o no.
   bool incluye(Task tarea, {required DateTime ahora}) => switch (this) {
-    todas => true,
-    pendientes => !tarea.completada,
+    pendientes => !tarea.completada && !yaPaso(tarea, ahora: ahora),
     completadas => tarea.completada,
-    pasadas => tarea.inicio.isBefore(ahora),
+    pasadas => yaPaso(tarea, ahora: ahora),
+    todas => true,
   };
 }

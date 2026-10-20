@@ -11,28 +11,36 @@ import 'abrir_dictado.dart';
 import 'grabadora.dart';
 import 'providers_voz.dart';
 
-/// En qué paso va el botón.
+/// En qué paso va el dictado.
 enum _Fase {
-  /// Esperando a que lo presionen.
+  /// Solo se ve el botón del micrófono.
   libre,
 
   /// Revisando permisos y espacio en la cola antes de grabar.
   preparando,
+
+  /// Grabando: se ve el panel con la onda de voz.
   grabando,
+
+  /// Grabación en pausa (por el usuario o al llegar a los 30 s).
+  pausado,
 
   /// Guardando el audio y enviándolo a la IA.
   enviando,
 }
 
-/// Botón de dictado: se mantiene presionado para hablar y se suelta para
-/// terminar.
+/// Botón de dictado, al estilo de los audios de WhatsApp: se toca una vez y
+/// se puede hablar sin mantenerlo presionado.
 ///
-/// El camino completo de un dictado:
-/// 1. Graba un WAV (máximo 30 s) mientras el dedo está sobre el botón.
-/// 2. Lo guarda en la cola de dictados (tabla Dictados). Desde aquí ya no se
-///    pierde, pase lo que pase.
-/// 3. Si hay red, lo envía a la IA y abre la tarjeta con lo que entendió.
-///    Si no, avisa: se procesará solo cuando vuelva la conexión.
+/// Mientras graba, el botón se convierte en un panel con:
+/// - el tiempo grabado y el límite ("0:07 / 0:30"),
+/// - la onda de voz en vivo,
+/// - 🗑 Descartar, ⏸ Pausar / ▶ Continuar y ➤ Enviar.
+///
+/// Al enviar, el dictado sigue el mismo camino de siempre:
+/// 1. Se guarda en la cola de dictados (tabla Dictados): ya no se pierde.
+/// 2. Si hay red, se envía a la IA y se abre la tarjeta con lo que entendió.
+///    Si no, se procesará solo cuando vuelva la conexión.
 class VoiceButton extends ConsumerStatefulWidget {
   const VoiceButton({super.key});
 
@@ -40,26 +48,60 @@ class VoiceButton extends ConsumerStatefulWidget {
   ConsumerState<VoiceButton> createState() => _VoiceButtonState();
 }
 
-class _VoiceButtonState extends ConsumerState<VoiceButton> {
-  final _grabadora = Grabadora();
+class _VoiceButtonState extends ConsumerState<VoiceButton>
+    with WidgetsBindingObserver {
+  /// Cada cuánto se actualizan el contador y la onda de voz.
+  static const _paso = Duration(milliseconds: 100);
+
+  /// Cuántas barras tiene la onda de voz.
+  static const _barras = 40;
+
   _Fase _fase = _Fase.libre;
-
-  /// `true` cuando el dedo ya se levantó. Preparar la grabación toma un
-  /// momento, y el usuario puede soltar antes de que empiece.
-  bool _soltado = false;
-
   String? _ruta;
   DateTime _inicio = DateTime.now();
-  Duration _transcurrido = Duration.zero;
 
-  /// Actualiza el contador en pantalla y corta a los 30 segundos.
+  /// Tiempo grabado, sin contar las pausas.
+  Duration _grabado = Duration.zero;
+
+  /// `true` al llegar a los 30 s: ya no se puede continuar, solo enviar o
+  /// descartar.
+  bool _enLimite = false;
+
+  /// Volumen de los últimos instantes, de 0 a 1, para dibujar la onda.
+  final _niveles = <double>[];
+
   Timer? _reloj;
+
+  /// Se lee una sola vez al crear el botón: en `dispose` ya no se puede usar
+  /// `ref`, y ahí hace falta para cancelar una grabación a medias.
+  late final Grabadora _grabadora;
+
+  bool get _hayGrabacion => _fase == _Fase.grabando || _fase == _Fase.pausado;
+
+  @override
+  void initState() {
+    super.initState();
+    _grabadora = ref.read(grabadoraProvider);
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reloj?.cancel();
-    _grabadora.dispose();
+    // Si se cierra la pantalla a mitad de una grabación, se descarta.
+    if (_hayGrabacion) unawaited(_grabadora.cancelar());
     super.dispose();
+  }
+
+  /// Si el usuario sale de la app mientras graba, se pausa: Android no deja
+  /// usar el micrófono a una app que no está en pantalla.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.paused ||
+        estado == AppLifecycleState.hidden) {
+      _pausar();
+    }
   }
 
   void _avisar(String mensaje, {SnackBarAction? accion}) {
@@ -69,19 +111,14 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
       ..showSnackBar(SnackBar(content: Text(mensaje), action: accion));
   }
 
-  void _alPresionar() {
-    if (_fase != _Fase.libre) return;
-    _fase = _Fase.preparando;
-    _soltado = false;
-    _empezar();
-  }
-
-  void _alSoltar() {
-    _soltado = true;
-    if (_fase == _Fase.grabando) _terminar();
+  void _volverALibre() {
+    _reloj?.cancel();
+    if (mounted) setState(() => _fase = _Fase.libre);
   }
 
   Future<void> _empezar() async {
+    if (_fase != _Fase.libre) return;
+    setState(() => _fase = _Fase.preparando);
     try {
       final enCola = await ref.read(dictadosRepositoryProvider).contar();
       if (enCola >= maximoDictadosEnEspera) {
@@ -92,10 +129,6 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
         return _volverALibre();
       }
       if (!await _tienePermiso()) return _volverALibre();
-      if (_soltado) {
-        _avisar('Mantén presionado mientras hablas.');
-        return _volverALibre();
-      }
 
       _ruta = await _grabadora.empezar();
       _inicio = DateTime.now();
@@ -103,40 +136,100 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
       if (!mounted) return;
       setState(() {
         _fase = _Fase.grabando;
-        _transcurrido = Duration.zero;
+        _grabado = Duration.zero;
+        _enLimite = false;
+        _niveles.clear();
       });
-      _reloj = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        final transcurrido = DateTime.now().difference(_inicio);
-        if (transcurrido >= duracionMaximaDictado) {
-          _terminar();
-        } else {
-          setState(() => _transcurrido = transcurrido);
-        }
-      });
-      // Soltó justo mientras arrancaba la grabación.
-      if (_soltado) await _terminar();
+      _reloj = Timer.periodic(_paso, (_) => _avanzar());
     } catch (_) {
       _avisar('No se pudo usar el micrófono. Intenta de nuevo.');
       _volverALibre();
     }
   }
 
-  void _volverALibre() {
-    if (mounted) setState(() => _fase = _Fase.libre);
+  /// Cada [_paso]: suma tiempo, agrega una barra a la onda y, al llegar a los
+  /// 30 s, pausa sola la grabación.
+  Future<void> _avanzar() async {
+    if (_fase != _Fase.grabando) return;
+    _grabado += _paso;
+    var nivel = 0.0;
+    try {
+      nivel = await _grabadora.nivel();
+    } catch (_) {
+      // Sin volumen, la onda se ve plana, pero la grabación sigue.
+    }
+    if (!mounted || _fase != _Fase.grabando) return;
+    setState(() {
+      _niveles.add(nivel);
+      if (_niveles.length > _barras) _niveles.removeAt(0);
+    });
+    if (_grabado >= duracionMaximaDictado) {
+      _enLimite = true;
+      await _pausar();
+    }
+  }
+
+  Future<void> _pausar() async {
+    if (_fase != _Fase.grabando) return;
+    setState(() => _fase = _Fase.pausado);
+    try {
+      await _grabadora.pausar();
+    } catch (_) {
+      // Si no se pudo pausar, igual se dejó de contar el tiempo.
+    }
+  }
+
+  Future<void> _continuar() async {
+    if (_fase != _Fase.pausado || _enLimite) return;
+    try {
+      await _grabadora.reanudar();
+      if (mounted) setState(() => _fase = _Fase.grabando);
+    } catch (_) {
+      _avisar('No se pudo continuar la grabación.');
+    }
+  }
+
+  Future<void> _descartar() async {
+    if (!_hayGrabacion) return;
+    _volverALibre();
+    try {
+      await _grabadora.cancelar();
+    } catch (_) {
+      // El archivo quedó a medias; no afecta a la app.
+    }
+  }
+
+  Future<void> _enviar() async {
+    if (!_hayGrabacion) return;
+    _reloj?.cancel();
+    setState(() => _fase = _Fase.enviando);
+    try {
+      if (_grabado < duracionMinimaDictado) {
+        await _grabadora.cancelar();
+        _avisar('La grabación es muy corta. Habla un poco más.');
+        return;
+      }
+      await _grabadora.terminar();
+      HapticFeedback.lightImpact();
+
+      final id = await ref
+          .read(dictadosRepositoryProvider)
+          .crear(rutaAudio: _ruta!, grabadoEn: _inicio);
+      await _procesar(id);
+    } catch (_) {
+      _avisar('No se pudo guardar el dictado. Intenta de nuevo.');
+    } finally {
+      _volverALibre();
+    }
   }
 
   /// Pide el permiso de micrófono si hace falta. Devuelve `true` si ya se
   /// puede grabar.
   Future<bool> _tienePermiso() async {
     if (await _grabadora.tienePermiso(pedir: false)) return true;
-
-    // La primera vez Android muestra su ventana de permiso. Mientras está
-    // abierta el dedo se suelta, así que no se graba en este intento.
-    if (await _grabadora.tienePermiso(pedir: true)) {
-      _avisar('Listo. Ahora mantén presionado el micrófono para dictar.');
-    } else {
-      await _explicarPermiso();
-    }
+    // La primera vez Android muestra su ventana de permiso.
+    if (await _grabadora.tienePermiso(pedir: true)) return true;
+    await _explicarPermiso();
     return false;
   }
 
@@ -162,32 +255,6 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
         ],
       ),
     );
-  }
-
-  Future<void> _terminar() async {
-    if (_fase != _Fase.grabando) return;
-    _reloj?.cancel();
-    setState(() => _fase = _Fase.enviando);
-
-    try {
-      final duracion = DateTime.now().difference(_inicio);
-      if (duracion < duracionMinimaDictado) {
-        await _grabadora.cancelar();
-        _avisar('Mantén presionado mientras hablas.');
-        return;
-      }
-      await _grabadora.terminar();
-      HapticFeedback.lightImpact();
-
-      final id = await ref
-          .read(dictadosRepositoryProvider)
-          .crear(rutaAudio: _ruta!, grabadoEn: _inicio);
-      await _procesar(id);
-    } catch (_) {
-      _avisar('No se pudo guardar el dictado. Intenta de nuevo.');
-    } finally {
-      _volverALibre();
-    }
   }
 
   Future<void> _procesar(int id) async {
@@ -266,90 +333,227 @@ class _VoiceButtonState extends ConsumerState<VoiceButton> {
 
   @override
   Widget build(BuildContext context) {
-    final colores = Theme.of(context).colorScheme;
-    final grabando = _fase == _Fase.grabando;
-    // Mientras graba, el botón crece y se pone rojo, y un anillo muestra
-    // cuánto queda de los 30 segundos.
-    final tamano = grabando ? 84.0 : 72.0;
-    final fondo = grabando ? colores.error : colores.primary;
-    final icono = grabando ? colores.onError : colores.onPrimary;
-    final progreso =
-        _transcurrido.inMilliseconds / duracionMaximaDictado.inMilliseconds;
+    if (_hayGrabacion) {
+      return _PanelGrabacion(
+        grabado: _grabado,
+        pausado: _fase == _Fase.pausado,
+        enLimite: _enLimite,
+        niveles: _niveles,
+        barras: _barras,
+        onDescartar: _descartar,
+        onPausar: _pausar,
+        onContinuar: _continuar,
+        onEnviar: _enviar,
+      );
+    }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (grabando)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Chip(
-              avatar: Icon(Icons.fiber_manual_record, color: colores.error),
-              label: Text(
-                '${_segundos(_transcurrido)} / '
-                '${_segundos(duracionMaximaDictado)}',
-              ),
-            ),
-          ),
-        Semantics(
-          button: true,
-          label: 'Mantén presionado para dictar una tarea',
-          child: GestureDetector(
-            onTap: () => _avisar('Mantén presionado para dictar.'),
-            onLongPressStart: (_) => _alPresionar(),
-            onLongPressEnd: (_) => _alSoltar(),
-            // Si el gesto se interrumpe (por ejemplo, una llamada entrante),
-            // se trata como si hubiera soltado.
-            onLongPressCancel: _alSoltar,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: tamano,
-                  height: tamano,
-                  decoration: BoxDecoration(
-                    color: fondo,
-                    shape: BoxShape.circle,
-                    boxShadow: const [
-                      BoxShadow(
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                        color: Colors.black26,
-                      ),
-                    ],
-                  ),
-                  child: _fase == _Fase.enviando
-                      ? Padding(
-                          padding: const EdgeInsets.all(22),
-                          child: CircularProgressIndicator(color: icono),
-                        )
-                      : Icon(
-                          grabando ? Icons.graphic_eq : Icons.mic,
-                          size: 36,
-                          color: icono,
-                        ),
+    final colores = Theme.of(context).colorScheme;
+    final enviando = _fase == _Fase.enviando;
+    return Tooltip(
+      message: 'Dictar una tarea',
+      child: Semantics(
+        button: true,
+        label: 'Toca para dictar una tarea',
+        child: GestureDetector(
+          onTap: _empezar,
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: colores.primary,
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                  color: Colors.black26,
                 ),
-                if (grabando)
-                  SizedBox(
-                    width: tamano + 10,
-                    height: tamano + 10,
-                    child: CircularProgressIndicator(
-                      value: progreso.clamp(0, 1),
-                      strokeWidth: 4,
-                      color: colores.error,
-                    ),
-                  ),
               ],
             ),
+            child: enviando
+                ? Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: CircularProgressIndicator(color: colores.onPrimary),
+                  )
+                : Icon(Icons.mic, size: 36, color: colores.onPrimary),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
+/// Panel que reemplaza al botón mientras se graba, como en WhatsApp.
+class _PanelGrabacion extends StatelessWidget {
+  const _PanelGrabacion({
+    required this.grabado,
+    required this.pausado,
+    required this.enLimite,
+    required this.niveles,
+    required this.barras,
+    required this.onDescartar,
+    required this.onPausar,
+    required this.onContinuar,
+    required this.onEnviar,
+  });
+
+  final Duration grabado;
+  final bool pausado;
+  final bool enLimite;
+  final List<double> niveles;
+  final int barras;
+  final VoidCallback onDescartar;
+  final VoidCallback onPausar;
+  final VoidCallback onContinuar;
+  final VoidCallback onEnviar;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    final textos = Theme.of(context).textTheme;
+    final ancho = MediaQuery.sizeOf(context).width - 32;
+
+    return SizedBox(
+      width: ancho,
+      child: Material(
+        elevation: 6,
+        color: colores.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(28),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  // Punto rojo mientras graba; ícono de pausa si está pausado.
+                  Icon(
+                    pausado ? Icons.pause_circle : Icons.fiber_manual_record,
+                    size: 18,
+                    color: pausado ? colores.onSurfaceVariant : colores.error,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_minutos(grabado)} / ${_minutos(duracionMaximaDictado)}',
+                    style: textos.titleMedium?.copyWith(
+                      // Números del mismo ancho: el texto no "baila".
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: CustomPaint(
+                        painter: _OndaDeVoz(
+                          niveles: niveles,
+                          barras: barras,
+                          color: pausado ? colores.outline : colores.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (enLimite)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Llegaste al límite de 30 s. Envía o descarta el audio.',
+                    style: textos.bodySmall?.copyWith(color: colores.error),
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Descartar',
+                    iconSize: 28,
+                    color: colores.error,
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: onDescartar,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      // Al llegar al límite ya no se puede seguir grabando.
+                      onPressed: enLimite
+                          ? null
+                          : (pausado ? onContinuar : onPausar),
+                      icon: Icon(pausado ? Icons.mic : Icons.pause),
+                      label: Text(pausado ? 'Continuar' : 'Pausar'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Enviar',
+                    iconSize: 28,
+                    icon: const Icon(Icons.send),
+                    onPressed: onEnviar,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dibuja la onda de voz: una barra por instante, la más nueva a la derecha.
+/// Las barras aún sin datos se ven como puntos.
+class _OndaDeVoz extends CustomPainter {
+  _OndaDeVoz({required this.niveles, required this.barras, required this.color})
+    : _copia = List.of(niveles);
+
+  final List<double> niveles;
+  final int barras;
+  final Color color;
+
+  /// Copia para saber si cambió (la lista original se modifica en el lugar).
+  final List<double> _copia;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final espacio = size.width / barras;
+    final pincel = Paint()
+      ..color = color
+      ..strokeWidth = espacio * 0.6
+      ..strokeCap = StrokeCap.round;
+    final centro = size.height / 2;
+    final vacias = barras - _copia.length;
+
+    for (var i = 0; i < barras; i++) {
+      final nivel = i < vacias ? 0.0 : _copia[i - vacias];
+      final alto = (size.height * nivel).clamp(2.0, size.height) / 2;
+      final x = espacio * i + espacio / 2;
+      canvas.drawLine(
+        Offset(x, centro - alto),
+        Offset(x, centro + alto),
+        pincel,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_OndaDeVoz anterior) =>
+      anterior.color != color || !_iguales(anterior._copia, _copia);
+
+  static bool _iguales(List<double> a, List<double> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
 /// 7 segundos → "0:07".
-String _segundos(Duration duracion) {
+String _minutos(Duration duracion) {
   final s = duracion.inSeconds;
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }

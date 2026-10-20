@@ -4,6 +4,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 /// Graba el micrófono en un archivo WAV listo para enviar a la IA.
+///
+/// Las pruebas usan una subclase que no toca el micrófono (ver
+/// `test/ayudantes.dart`).
 class Grabadora {
   /// Se crea recién al grabar por primera vez (así las pruebas de pantalla,
   /// que no tienen micrófono, no lo tocan).
@@ -35,6 +38,19 @@ class Grabadora {
         '${carpeta.path}/dictado_${DateTime.now().millisecondsSinceEpoch}.wav';
     await _recorder.start(_formato, path: ruta);
     return ruta;
+  }
+
+  Future<void> pausar() => _recorder.pause();
+
+  Future<void> reanudar() => _recorder.resume();
+
+  /// Volumen actual del micrófono, de 0 (silencio) a 1 (muy fuerte), para
+  /// dibujar la onda de voz.
+  Future<double> nivel() async {
+    // El paquete lo da en dBFS: 0 es el máximo y los números negativos son
+    // más bajos. La voz normal anda entre -50 y 0.
+    final decibeles = (await _recorder.getAmplitude()).current;
+    return ((decibeles + 50) / 50).clamp(0.0, 1.0);
   }
 
   /// Termina la grabación y deja el archivo guardado.

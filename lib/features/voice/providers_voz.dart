@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
 import 'extraccion_api.dart';
+import 'grabadora.dart';
 import 'procesador_dictados.dart';
 
 /// Pregunta al celular si está conectado a alguna red (wifi o datos).
@@ -23,6 +24,13 @@ class Conectividad {
 
 /// Las pruebas lo reemplazan, porque ahí no existe el plugin del celular.
 final conectividadProvider = Provider<Conectividad>((ref) => Conectividad());
+
+/// El micrófono. Las pruebas lo reemplazan por uno falso.
+final grabadoraProvider = Provider<Grabadora>((ref) {
+  final grabadora = Grabadora();
+  ref.onDispose(grabadora.dispose);
+  return grabadora;
+});
 
 /// Cliente de la Edge Function. Las pruebas lo reemplazan por uno falso.
 final extraccionApiProvider = Provider<ExtraccionApi>((ref) {

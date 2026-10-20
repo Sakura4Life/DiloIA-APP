@@ -11,7 +11,8 @@
 //   { "audio": "<base64>", "mimeType": "audio/wav", "hoy": "...", "cursos": [...] }
 //
 // Respuesta 200:
-//   { "transcripcion", "materia", "tipo", "titulo", "fecha", "hora", "peso" }
+//   { "transcripcion", "materia", "tipo", "titulo", "fecha", "hora", "horaFin",
+//     "peso" }
 // Respuesta de error (400, 429, 500 o 502):
 //   { "error": "mensaje para el usuario", "codigo": "..." }
 
@@ -34,7 +35,9 @@ function responder(estado: number, cuerpo: unknown): Response {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CABECERAS });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: CABECERAS });
+  }
   if (req.method !== "POST") {
     return responder(405, { error: "Usa POST.", codigo: "entrada_invalida" });
   }
