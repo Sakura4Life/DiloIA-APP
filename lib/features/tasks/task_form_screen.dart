@@ -625,6 +625,7 @@ class _LoQueEntendio extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colores = Theme.of(context).colorScheme;
+    final textStyles = Theme.of(context).textTheme;
     return Card.filled(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       color: colores.primaryContainer,
@@ -638,7 +639,7 @@ class _LoQueEntendio extends StatelessWidget {
             Expanded(
               child: Text(
                 'Entendí: «$transcripcion»',
-                style: TextStyle(
+                style: textStyles.titleMedium?.copyWith(
                   color: colores.onPrimaryContainer,
                   fontStyle: FontStyle.italic,
                 ),
