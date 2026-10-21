@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'data/providers.dart';
+import 'data/tema_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +21,18 @@ Future<void> main() async {
   await initializeDateFormatting('es');
   Intl.defaultLocale = 'es';
 
+  // Preferencia de modo claro u oscuro guardada en una sesión anterior.
+  final preferencias = await SharedPreferences.getInstance();
+
   // ProviderScope es donde Riverpod guarda el estado compartido de la app.
-  runApp(const ProviderScope(child: DiloIAApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        temaRepositoryProvider.overrideWithValue(
+          TemaRepositoryPreferencias(preferencias),
+        ),
+      ],
+      child: const DiloIAApp(),
+    ),
+  );
 }

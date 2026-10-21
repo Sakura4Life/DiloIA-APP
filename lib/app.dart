@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme.dart';
+import 'core/widgets/boton_modo_tema.dart';
+import 'data/providers.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/courses/courses_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
@@ -12,16 +15,18 @@ import 'features/voice/cola_automatica.dart';
 import 'features/voice/voice_button.dart';
 
 /// Raíz visual de la app: tema, idioma y pantalla inicial.
-class DiloIAApp extends StatelessWidget {
+class DiloIAApp extends ConsumerWidget {
   const DiloIAApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'DiloIA',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.claro,
       darkTheme: AppTheme.oscuro,
+      // Modo elegido por el usuario; si nunca eligió, sigue al del sistema.
+      themeMode: ref.watch(modoTemaProvider),
       // Textos del sistema (calendarios, selectores de fecha y hora) en español.
       locale: const Locale('es'),
       supportedLocales: const [Locale('es')],
@@ -99,6 +104,8 @@ class _HomeShellState extends State<HomeShell> {
             icon: const Icon(Icons.add),
             onPressed: () => _abrir(const TaskFormScreen()),
           ),
+          // Al final, como los demás: mismo tamaño y sin márgenes extra.
+          const BotonModoTema(),
         ],
       ),
       // IndexedStack mantiene vivas las tres pantallas: al volver a una
